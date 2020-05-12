@@ -776,16 +776,116 @@ def HashFspBin (FspBinary):
 
     FspAddr = 0
     for fsp in fd.FspList:
+        ImageSize = fsp.Fih.ImageSize
         CfgRegionOffset = fsp.Fih.CfgRegionOffset
         CfgRegionSize = fsp.Fih.CfgRegionSize
 
-        UDP_Data = fd.FdData[(FspAddr + CfgRegionOffset) : (FspAddr + CfgRegionOffset + CfgRegionSize)]
-        fd.FdData = fd.FdData.replace(UDP_Data, b"")
-        FspAddr += fsp.Fih.ImageSize
+        fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
+        UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
+        fspData = fspData.replace(UDP_Data, b"")
 
-    hash_out = hashlib.sha256(fd.FdData).hexdigest()
+        hash_out = hashlib.sha256(fspData).hexdigest()
+        print ("FSP_%s SHA: %s" % (fsp.Type, hash_out))
+        FspAddr += ImageSize
 
-    print ("SHA: %s" % hash_out)
+def GenFspManifest (FspBinary, SvnNum, OutputDir, OutputFile):
+    fd = FirmwareDevice(0, FspBinary)
+    fd.ParseFd()
+    fd.ParseFsp()
+
+    if OutputFile == '':
+        filename = os.path.basename(FspBinary)
+        base, ext  = os.path.splitext(filename)
+        OutputFile = base + "Manifest.bin"
+
+    fspname, ext = os.path.splitext(os.path.basename(OutputFile))
+    filename = os.path.join(OutputDir, fspname + ext)
+
+    fspmanifestbin = bytearray([])
+    DigestSize = 64
+
+    # Component Manifest Additional Data
+    AddDataType = 1
+    AddDigestType = 0xB
+
+    AddDataType0 = 2
+
+    # Component Manifest
+    CompDataType = 0
+
+    # Manifest
+    ManifestSignature = b'_FM_'
+    ManifestSize = sizeof(c_uint32) + sizeof(c_uint32) + sizeof(c_uint8) + sizeof(c_uint24) + sizeof(c_uint32)
+    ManifestStructureVersion = 0x10
+    ManifestReservedData = 0x0
+    if SvnNum == '':
+        MainifestFspSvn = fd.FspList[0].Fih.ImageRevision
+    else:
+        MainifestFspSvn = eval(SvnNum)
+
+    offset = 0
+    fspmanifestbin[offset:offset + sizeof(c_uint32)] = ManifestSignature
+    offset += sizeof(c_uint32)
+    ManifestSizeOffset = offset
+    fspmanifestbin[ManifestSizeOffset:ManifestSizeOffset + sizeof(c_uint32)] = Val2Bytes(0, sizeof(c_uint32))
+    offset += sizeof(c_uint32)
+    fspmanifestbin[offset:offset + sizeof(c_uint8)] = Val2Bytes(ManifestStructureVersion, sizeof(c_uint8))
+    offset += sizeof(c_uint8)
+    fspmanifestbin[offset:offset + sizeof(c_uint24)] = Val2Bytes(ManifestReservedData, sizeof(c_uint24))
+    offset += sizeof(c_uint24)
+    fspmanifestbin[offset:offset + sizeof(c_uint32)] = Val2Bytes(MainifestFspSvn, sizeof(c_uint32))
+    offset += sizeof(c_uint32)
+
+    FspAddr = 0
+    for fsp in fd.FspList:
+        ImageSize = fsp.Fih.ImageSize
+        CfgRegionOffset = fsp.Fih.CfgRegionOffset
+        CfgRegionSize = fsp.Fih.CfgRegionSize
+
+        fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
+        AddFspInfoHeader = fd.FdData[FspAddr : (FspAddr + sizeof(FSP_INFORMATION_HEADER))]
+        UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
+        fspData = fspData.replace(UDP_Data, b"")
+
+
+        AddDigestData = hashlib.sha256(fspData).hexdigest()
+
+        AddDataLength  = sizeof(c_uint16) + sizeof(c_uint16) + sizeof(c_uint16) + len(AddDigestData)
+        AddDataLength0 = sizeof(c_uint16) + sizeof(c_uint16) + CfgRegionSize
+        CompDataLength = sizeof(c_uint16) + sizeof(c_uint16) + sizeof(FSP_INFORMATION_HEADER) + AddDataLength + AddDataLength0
+
+        ManifestSize += CompDataLength
+
+        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(CompDataType, sizeof(c_uint16))
+        offset += sizeof(c_uint16)
+        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(CompDataLength, sizeof(c_uint16))
+        offset += sizeof(c_uint16)
+        fspmanifestbin[offset:offset + sizeof(FSP_INFORMATION_HEADER)] = AddFspInfoHeader
+        offset += sizeof(FSP_INFORMATION_HEADER)
+        # FSP Component Manifest Addtional Data for Code
+        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataType, sizeof(c_uint16))
+        offset += sizeof(c_uint16)
+        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataLength, sizeof(c_uint16))
+        offset += sizeof(c_uint16)
+        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDigestType, sizeof(c_uint16))
+        offset += sizeof(c_uint16)
+        fspmanifestbin[offset:offset + DigestSize] = bytearray(AddDigestData, encoding="utf-8")
+        offset += DigestSize
+        # FSP Component Manifest Addtional Data for Configuration
+        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataType0, sizeof(c_uint16))
+        offset += sizeof(c_uint16)
+        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataLength0, sizeof(c_uint16))
+        offset += sizeof(c_uint16)
+        fspmanifestbin[offset:offset + CfgRegionSize] = UDP_Data
+        offset += CfgRegionSize
+
+        FspAddr += ImageSize
+
+    fspmanifestbin[ManifestSizeOffset:ManifestSizeOffset + sizeof(c_uint32)] = Val2Bytes(ManifestSize, sizeof(c_uint32))
+
+    fd = open(filename, "wb")
+    fd.write(bytearray(fspmanifestbin))
+    fd.close()
 
 def main ():
     parser     = argparse.ArgumentParser()
@@ -803,12 +903,19 @@ def main ():
     parser_hash.set_defaults(which='hash')
     parser_hash.add_argument('-f',  '--fspbin' , dest='FspBinary', type=str, help='FSP binary file path', required = True)
 
+    parser_manifest = subparsers.add_parser('manifest', help='generate FSP manifest')
+    parser_manifest.set_defaults(which='manifest')
+    parser_manifest.add_argument('-f', '--fspbin', dest='FspBinary', type=str, help='FSP binary file path', required=True)
+    parser_manifest.add_argument('-s', '--svn', dest='SVN', type=str, help='FSP manifest SVN', default='')
+    parser_manifest.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
+    parser_manifest.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='FSP manifest binary file name', default='')
+
     parser_info = subparsers.add_parser('info',  help='display FSP information')
     parser_info.set_defaults(which='info')
     parser_info.add_argument('-f',  '--fspbin' , dest='FspBinary', type=str, help='FSP binary file path', required = True)
 
     args = parser.parse_args()
-    if args.which in ['rebase', 'hash', 'info']:
+    if args.which in ['rebase', 'hash', 'manifest', 'info']:
         if not os.path.exists(args.FspBinary):
             raise Exception ("ERROR: Could not locate FSP binary file '%s' !" % args.FspBinary)
         if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
@@ -818,6 +925,8 @@ def main ():
         RebaseFspBin (args.FspBinary, args.FspComponent, args.FspBase, args.OutputDir, args.OutputFile)
     elif args.which == 'hash':
         HashFspBin (args.FspBinary)
+    elif args.which == 'manifest':
+        GenFspManifest (args.FspBinary, args.SVN, args.OutputDir, args.OutputFile)
     elif args.which == 'info':
         ShowFspInfo (args.FspBinary)
     else:
