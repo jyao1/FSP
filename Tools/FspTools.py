@@ -843,7 +843,7 @@ def GenFspManifest (FspBinary, SvnNum, OutputDir, OutputFile):
         CfgRegionSize = fsp.Fih.CfgRegionSize
 
         fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
-        AddFspInfoHeader = fd.FdData[FspAddr : (FspAddr + sizeof(FSP_INFORMATION_HEADER))]
+        AddFspInfoHeader = fd.FdData[FspAddr + fsp.FihOffset : (FspAddr + fsp.FihOffset + sizeof(FSP_INFORMATION_HEADER))]
         UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
         fspData = fspData.replace(UDP_Data, b"")
 
