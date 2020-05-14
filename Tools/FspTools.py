@@ -10,6 +10,7 @@ import sys
 import uuid
 import hashlib
 import argparse
+import subprocess
 from   ctypes import *
 from functools import reduce
 
@@ -887,6 +888,119 @@ def GenFspManifest (FspBinary, SvnNum, OutputDir, OutputFile):
     fd.write(bytearray(fspmanifestbin))
     fd.close()
 
+def CheckOpenssl ():
+    #
+    # Generate file path to Open SSL command
+    #
+    try:
+        OpenSslPath = os.environ['OPENSSL_PATH']
+        global OpenSslCommand
+        OpenSslCommand = os.path.join(OpenSslPath, 'openssl')
+        if ' ' in OpenSslCommand:
+            OpenSslCommand = '"' + OpenSslCommand + '"'
+    except:
+        pass
+
+    #
+    # Verify that Open SSL command is available
+    #
+    try:
+        Process = subprocess.Popen('%s version' % (OpenSslCommand), stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    except:
+        print('ERROR: Open SSL command not available.  Please verify PATH or set OPENSSL_PATH')
+        sys.exit(1)
+
+    Version = Process.communicate()
+    if Process.returncode != 0:
+        print('ERROR: Open SSL command not available.  Please verify PATH or set OPENSSL_PATH')
+        sys.exit(Process.returncode)
+    print(Version[0].decode())
+
+
+def SignFspManifest (FspManifest, SignerPrivateCertFile, OtherPublicCertFile, OutputDir, OutputFile):
+    CheckOpenssl()
+
+    fd = open(FspManifest, 'rb')
+    FspManifestBuffer = fd.read()
+    fd.close()
+
+    #
+    # Sign the input file using the specified private key and capture signature from STDOUT
+    #
+    Process = subprocess.Popen('%s smime -sign -binary -signer "%s" -outform DER -md sha256 -certfile "%s"' % (OpenSslCommand, SignerPrivateCertFile, OtherPublicCertFile), stdin=subprocess.PIPE,  stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    Signature = Process.communicate(input=FspManifestBuffer)[0]
+    if Process.returncode != 0:
+        sys.exit(Process.returncode)
+
+    if OutputFile == '':
+        filename = os.path.basename(FspManifest)
+        base, ext  = os.path.splitext(filename)
+        OutputFile = base + ".sign.bin"
+
+    fspname, ext = os.path.splitext(os.path.basename(OutputFile))
+    filename = os.path.join(OutputDir, fspname + ext)
+
+    fd = open(filename, 'wb')
+    fd.write(Signature)
+    fd.write(FspManifestBuffer)
+    fd.close()
+
+def DecodeSignedFspManifest(SignedFspManifest, TrustedPublicCertFile, SignatureSizeStr, OutputDir, OutputFile):
+    CheckOpenssl()
+
+    fd = open(SignedFspManifest, 'rb')
+    SignedFspManifestBuffer = fd.read()
+    fd.close()
+
+    if SignatureSizeStr == '':
+        print("ERROR: please use the option --signature-size to specify the size of the signature data!")
+        sys.exit(1)
+    else:
+        try:
+            SignatureSize = eval(SignatureSizeStr)
+        except:
+            print ('%s is illegal' % SignatureSizeStr)
+            sys.exit(1)
+        if SignatureSize < 0:
+            print("ERROR: The value of option --signature-size can't be set to negative value!")
+            sys.exit(1)
+        elif SignatureSize > len(SignedFspManifestBuffer):
+            print("ERROR: The value of option --signature-size is exceed the size of the input file !")
+            sys.exit(1)
+
+    SignatureBuffer   = SignedFspManifestBuffer[0:SignatureSize]
+    FspManifestBuffer = SignedFspManifestBuffer[SignatureSize:]
+
+    if OutputFile == '':
+        filename = os.path.basename(SignedFspManifest)
+        base, ext  = filename.split('.')[0]
+        OutputFile = base + ".bin"
+
+    fspname, ext = os.path.splitext(os.path.basename(OutputFile))
+    filename = os.path.join(OutputDir, fspname + ext)
+
+    #
+    # Save output file contents from input file
+    #
+    fd = open(filename, 'wb')
+    fd.write(FspManifestBuffer)
+    fd.close()
+
+    #
+    # Verify signature
+    #
+    Process = subprocess.Popen('%s smime -verify -inform DER -content %s -CAfile %s' % (OpenSslCommand, filename, TrustedPublicCertFile), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    Process.communicate(input=SignatureBuffer)[0]
+    if Process.returncode != 0:
+        print('ERROR: Verification failed')
+        os.remove(filename)
+        sys.exit(Process.returncode)
+
+    fd = open(filename, 'wb')
+    fd.write(FspManifestBuffer)
+    fd.close()
+
+
 def main ():
     parser     = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
@@ -910,14 +1024,49 @@ def main ():
     parser_manifest.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
     parser_manifest.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='FSP manifest binary file name', default='')
 
+    parser_encode = subparsers.add_parser('encode', help='Encode FSP manifest file')
+    parser_encode.set_defaults(which='encode')
+    parser_encode.add_argument('-f', '--fspmanifest', dest='FspManifest', type=str, help='FSP manifest binary file path', required=True)
+    parser_encode.add_argument('--signer-private-cert', dest='SignerPrivateCertFile', type=str, help='specify the signer private cert filename.  If not specified, a test signer private cert is used.')
+    parser_encode.add_argument('--other-public-cert', dest='OtherPublicCertFile', type=str, help='specify the other public cert filename.  If not specified, a test other public cert is used.')
+    parser_encode.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
+    parser_encode.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
+
+    parser_decode = subparsers.add_parser('decode', help='Decode FSP manifest file')
+    parser_decode.set_defaults(which='decode')
+    parser_decode.add_argument('-f', '--fspmanifest', dest='SignedFspManifest', type=str, help='FSP manifest binary file path', required=True)
+    parser_decode.add_argument('--trusted-public-cert', dest='TrustedPublicCertFile', type=str, help='specify the trusted public cert filename.  If not specified, a test trusted public cert is used.')
+    parser_decode.add_argument('--signature-size', dest='SignatureSizeStr', type=str, help='specify the signature size for decode process.', default='')
+    parser_decode.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
+    parser_decode.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
+
     parser_info = subparsers.add_parser('info',  help='display FSP information')
     parser_info.set_defaults(which='info')
     parser_info.add_argument('-f',  '--fspbin' , dest='FspBinary', type=str, help='FSP binary file path', required = True)
 
     args = parser.parse_args()
+
     if args.which in ['rebase', 'hash', 'manifest', 'info']:
         if not os.path.exists(args.FspBinary):
             raise Exception ("ERROR: Could not locate FSP binary file '%s' !" % args.FspBinary)
+        if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
+            raise Exception ("ERROR: Invalid output directory '%s' !" % args.OutputDir)
+
+    if args.which == 'encode':
+        if not os.path.exists(args.FspManifest):
+            raise Exception ("ERROR: Could not locate FSP manifest file '%s' !" % args.FspManifest)
+        if not os.path.exists(args.SignerPrivateCertFile):
+            raise Exception ("ERROR: Could not locate signer private cert file '%s' !" % args.SignerPrivateCertFile)
+        if not os.path.exists(args.OtherPublicCertFile):
+            raise Exception ("ERROR: Could not locate other public cert file '%s' !" % args.OtherPublicCertFile)
+        if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
+            raise Exception ("ERROR: Invalid output directory '%s' !" % args.OutputDir)
+
+    if args.which == 'decode':
+        if not os.path.exists(args.SignedFspManifest):
+            raise Exception ("ERROR: Could not locate signed FSP manifest file '%s' !" % args.SignedFspManifest)
+        if not os.path.exists(args.TrustedPublicCertFile):
+            raise Exception("ERROR: Could not locate trusted public cert file '%s' !" % args.TrustedPublicCertFile)
         if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
             raise Exception ("ERROR: Invalid output directory '%s' !" % args.OutputDir)
 
@@ -927,6 +1076,10 @@ def main ():
         HashFspBin (args.FspBinary)
     elif args.which == 'manifest':
         GenFspManifest (args.FspBinary, args.SVN, args.OutputDir, args.OutputFile)
+    elif args.which == 'encode':
+        SignFspManifest (args.FspManifest, args.SignerPrivateCertFile, args.OtherPublicCertFile, args.OutputDir, args.OutputFile)
+    elif args.which == 'decode':
+        DecodeSignedFspManifest (args.SignedFspManifest, args.TrustedPublicCertFile, args.SignatureSizeStr, args.OutputDir, args.OutputFile)
     elif args.which == 'info':
         ShowFspInfo (args.FspBinary)
     else:
