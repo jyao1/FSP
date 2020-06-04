@@ -13,13 +13,7 @@ import hashlib
 import argparse
 import configparser
 
-# TagType
-# CORPUS = 1
-# PATCH = 2
-# SUPPLEMENTAL = 3
-# PRIMARY = 0
 TagTypeList   = ['primary', 'corpus', 'patch', 'supplemental']
-# RoleList      = ['aggregator', 'distributor', 'licensor', 'softwareCreator', 'tagCreator']
 UseMap       = {'required': 2, 'recommended': 3, 'optional': 1}
 OwnershipMap = {'abandon': 3, 'private': 2, 'shared': 1}
 VersionSchemeMap = {'multipartnumeric': 1, 'multipartnumeric-suffix': 2, 'alphanumeric': 3, 'decimal': 4, 'semver': 16384}
@@ -85,7 +79,46 @@ class GenCbor():
         if value != None:
             dict[tag] = value
 
+    def validateNonEmpty(self, tagName, value):
+        if value == None or value == []:
+            raise Exception("the field {} must contain a non-empty value".format(tagName))
+
+    def validateEntity(self, entity):
+        self.validateNonEmpty('name', entity['name'])
+        self.validateNonEmpty('role', entity['role'])
+
+    def validateLink(self, link):
+        self.validateNonEmpty('href', link['href'])
+        self.validateNonEmpty('rel', link['rel'])
+
+    def validatePayload(self, payload):
+        self.validateNonEmpty('name', payload['name'])
+
+    def validate(self):
+        self.validateNonEmpty('name', self.SWIDBuilder.name)
+        self.validateNonEmpty('tagId', self.SWIDBuilder.tagId)
+        self.validateNonEmpty('entity', self.SWIDBuilder.entities)
+
+        foundTagCreator = False
+        for entity in self.SWIDBuilder.entities:
+            self.validateEntity(entity)
+            if 'tagCreator' in entity['role']:
+                foundTagCreator = True
+
+        if not foundTagCreator:
+            raise Exception('at least one entity with role, tagCreator must be provided.')
+
+        if self.SWIDBuilder.payload != [] and self.SWIDBuilder.evidence != []:
+            raise Exception('Only one of evidence or payload must be provided.')
+
+        if self.SWIDBuilder.payload != []:
+            self.validatePayload(self.SWIDBuilder.payload[0])
+
+        for link in self.SWIDBuilder.links:
+            self.validateLink(link)
+
     def genCobor(self):
+        self.validate()
         # required attributes
         self.CborData[mapDict['tag-id']] = self.SWIDBuilder.tagId
         self.CborData[mapDict['tag-version']] = int(self.SWIDBuilder.tagVersion)
@@ -168,8 +201,6 @@ class GenCbor():
             self.CborData[mapDict['payload']][mapDict['file']][mapDict['size']]    = self.SWIDBuilder.payload[0]['size']
             self.CborData[mapDict['payload']][mapDict['file']][mapDict['hash']]    = [HashAlgorithmMap['SHA-256'], str(self.SWIDBuilder.payload[0]['hash']['SHA-256'])]
 
-
-
         with open(self.CborPath, 'wb') as f:
             f.write(cbor.dumps(self.CborData))
 
@@ -179,7 +210,7 @@ def GetValueFromSec(ini_obj, section, option):
     else:
         return None
 
-def ParseAndBuildSwidData(IniPath, PayloadFile):
+def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
     swid_builder = SWIDBuilder()
 
     ini = configparser.ConfigParser()
@@ -230,7 +261,7 @@ def ParseAndBuildSwidData(IniPath, PayloadFile):
             Meta['unspscVersion'] = GetValueFromSec(ini, section, 'unspscversion')
             swid_builder.addMeta(Meta)
 
-    payload = genFileBuilder(PayloadFile, ['sha256'])
+    payload = genFileBuilder(PayloadFile, HashTypes)
     swid_builder.addPayload(payload)
 
     return swid_builder
@@ -247,7 +278,7 @@ def genFileBuilder(FileName, HashAlgorithms):
     fb['size'] = os.path.getsize(FileName)
     fb['version'] = None
     for HashAlgorithm in HashAlgorithms:
-        if HashAlgorithm.lower() == 'sha256':
+        if HashAlgorithm == 'SHA-256':
             fb['hash']['SHA-256'] = hashlib.sha256(content).hexdigest()
 
     return fb
@@ -329,7 +360,7 @@ if __name__ == "__main__":
     parser_encode.set_defaults(which='encode')
     parser_encode.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
     parser_encode.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
-    parser_encode.add_argument('-t', '--hash', dest='HashType', type=list, help="Hash types")
+    parser_encode.add_argument('-t', '--hash', dest='HashType', action='append', type=str, choices=HashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), required=True)
     parser_encode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Cbor file path', default='', required=True)
 
     parser_decode = subparsers.add_parser('decode', help='Decode cbor format file')
@@ -339,7 +370,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.which == 'encode':
-        Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload))
+        if not os.path.exists(args.IniPath):
+            raise Exception("ERROR: Could not locate Ini file '%s' !" % args.IniPath)
+        if not os.path.exists(args.Payload):
+            raise Exception("ERROR: Could not locate payload file '%s' !" % args.Payload)
+        if os.path.isabs(args.OutputFile):
+            if not os.path.exists(os.path.dirname(args.OutputFile)):
+                os.makedirs(os.path.dirname(args.OutputFile))
+
+    if args.which == 'decode':
+        if not os.path.exists(args.File):
+            raise Exception("ERROR: Could not locate Cbor file '%s' !" % args.File)
+
+    if args.which == 'encode':
+        Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType))
         Encode.genCobor()
     elif args.which == 'decode':
         DecodeCbor(args.File)
