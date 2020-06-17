@@ -10,6 +10,8 @@ import copy
 import hashlib
 import argparse
 import configparser
+from lxml import etree
+from signxml import XMLSigner, methods
 from xml.dom.minidom import Document
 
 TagTypeList   = ['primary', 'corpus', 'patch', 'supplemental']
@@ -17,16 +19,28 @@ RoleList      = ['aggregator', 'distributor', 'licensor', 'softwareCreator', 'ta
 UseList       = ['required', 'recommended', 'optional']
 OwnershipList = ['abandon', 'private', 'shared']
 VersionSchemeList = ['multipartnumeric', 'multipartnumeric+suffix', 'alphanumeric', 'decimal', 'semver', 'unknown']
-HashAlgorithmMap = {"SHA-256": 1, "SHA_256_128": 2, "SHA_256_120": 3, "SHA_256_96": 4, "SHA_256_64": 5, "SHA_256_32": 6,
-                    "SHA_384": 7, "SHA-512": 8, "SHA_3_224": 9, "SHA_3_256": 9, "SHA_3_384": 9, "SHA_3_512": 9}
+HashAlgorithmMap = {"SHA_256": "http://www.w3.org/2001/04/xmlenc#sha256",
+                    "SHA_256_128": "http://www.w3.org/2001/04/xmlenc#sha256",
+                    "SHA_256_120": "http://www.w3.org/2001/04/xmlenc#sha256",
+                    "SHA_256_96": "http://www.w3.org/2001/04/xmlenc#sha256",
+                    "SHA_256_64": "http://www.w3.org/2001/04/xmlenc#sha256",
+                    "SHA_256_32": "http://www.w3.org/2001/04/xmlenc#sha256",
+                    "SHA_384": "http://www.w3.org/2001/04/xmldsig-more#sha384",
+                    "SHA_512": "http://www.w3.org/2001/04/xmlenc#sha512",
+                    "SHA_3_224": "http://www.w3.org/2007/05/xmldsig-more#sha3-224",
+                    "SHA_3_256": "http://www.w3.org/2007/05/xmldsig-more#sha3-256",
+                    "SHA_3_384": "http://www.w3.org/2007/05/xmldsig-more#sha3-384",
+                    "SHA_3_512": "http://www.w3.org/2007/05/xmldsig-more#sha3-512"}
 
 EntityBuilder = {'name': '', 'role': [], 'regid': '', 'thumbprint': ''}
 LinkBuilder = {'artifact': '', 'href': '', 'media': '', 'ownership': '', 'rel': '', 'type': '', 'use': ''}
 MetaBuilder = {'activationStatus': '', 'channelType': '', 'colloquialVersion': '', 'description': '', 'edition': '', 'entitlementDataRequired': '',
                'entitlementKey': '', 'generator': '', 'persistentId': '', 'productBaseName': '', 'productFamily': '', 'revision': '', 'summary': '',
                'unspscCode': '', 'unspscVersion': ''}
-FileBuilder = {'name': '', 'size': '', 'version': '', 'hash': {}}
+FileBuilder = {'name': '', 'size': '', 'version': ''}
 EvidenceBuilder = {'date': '', 'deviceId': '', }
+
+SupportHashAlgorithmList = ["SHA_256", "SHA_384", "SHA_512", "SHA_3_256", "SHA_3_384", "SHA_3_512"]
 
 class SWIDBuilder:
     def __init__(self):
@@ -63,15 +77,16 @@ class GenXml():
         if (value != None):
             element.setAttribute(attributeName, value)
 
-    def buildAbstractResourceCollectionBuilder(self, doc, element, data):
+    def buildAbstractResourceCollectionBuilder(self, doc, root, element, data):
         FileElement = doc.createElement('File')
         for key in data.keys():
-            if key != 'hash':
+            if not key.startswith('SHA'):
                 if data[key] != None:
                     FileElement.setAttribute(key, str(data[key]))
             else:
-                for hashTag in data[key].keys():
-                    FileElement.setAttribute(hashTag, str(data[key][hashTag]))
+                hashQualifiedName = 'SHA' + key.split("_")[-1] + ':hash'
+                root.setAttributeNS("http://standards.iso.org/iso/19770/-2/2015/schema.xsd", 'xmlns:' + 'SHA' + key.split("_")[-1], HashAlgorithmMap[key])
+                FileElement.setAttributeNS(HashAlgorithmMap[key], hashQualifiedName, str(data[key]))
 
         element.appendChild(FileElement)
 
@@ -117,7 +132,8 @@ class GenXml():
         self.validate()
         doc = Document()
         root = doc.createElement('SoftwareIdentity')
-        root.setAttribute('xmlns', "http://standards.iso.org/iso/19770/-2/2015/schema.xsd")
+
+        root.setAttribute('xmlns', 'http://standards.iso.org/iso/19770/-2/2015/schema.xsd')
         root.setAttribute('name', str(self.SWIDBuilder.name))
         root.setAttribute('tagId', str(self.SWIDBuilder.tagId))
 
@@ -172,7 +188,7 @@ class GenXml():
 
         if self.SWIDBuilder.payload != []:
             PayloadElement = doc.createElement('Payload')
-            self.buildAbstractResourceCollectionBuilder(doc, PayloadElement, self.SWIDBuilder.payload[0])
+            self.buildAbstractResourceCollectionBuilder(doc, root, PayloadElement, self.SWIDBuilder.payload[0])
             root.appendChild(PayloadElement)
 
         doc.appendChild(root)
@@ -254,26 +270,69 @@ def genFileBuilder(FileName, HashAlgorithms):
     fb['size'] = os.path.getsize(FileName)
     fb['version'] = None
     for HashAlgorithm in HashAlgorithms:
-        if HashAlgorithm == 'SHA-256':
-            fb['hash']['SHA256:hash'] = hashlib.sha256(content).hexdigest()
+        if HashAlgorithm == 'SHA_256':
+            fb[HashAlgorithm ] = hashlib.sha256(content).hexdigest()
+        elif HashAlgorithm == 'SHA_384':
+            fb[HashAlgorithm] = hashlib.sha384(content).hexdigest()
+        elif HashAlgorithm == 'SHA_512':
+            fb[HashAlgorithm ] = hashlib.sha512(content).hexdigest()
+        elif HashAlgorithm == 'SHA_3_256':
+            fb[HashAlgorithm ] = hashlib.sha3_256(content).hexdigest()
+        elif HashAlgorithm == 'SHA_3_384':
+            fb[HashAlgorithm ] = hashlib.sha3_384(content).hexdigest()
+        elif HashAlgorithm == 'SHA_3_512':
+            fb[HashAlgorithm ] = hashlib.sha3_512(content).hexdigest()
 
     return fb
 
+def SignXmlFile(XmlPath, KeyPath, CertPath, SignedXmlPath):
+    with open(XmlPath, 'rb') as f:
+        data_to_sign = f.read()
+
+    key, cert = [open(path).read() for path in [KeyPath, CertPath]]
+
+    root = etree.fromstring(data_to_sign)
+    signed_root = XMLSigner(method=methods.enveloping).sign(root, key=key, cert=cert)
+
+    etree.ElementTree(signed_root).write(SignedXmlPath,  pretty_print=True)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
-    parser.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
-    parser.add_argument('-t', '--hash', dest='HashType', action='append', type=str, choices=HashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), required=True)
-    parser.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Cbor file path', default='', required=True)
+    subparsers = parser.add_subparsers(title='commands', dest="which")
+
+    parser_genswid = subparsers.add_parser('genswid', help='Generate Swid format file')
+    parser_genswid.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
+    parser_genswid.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
+    parser_genswid.add_argument('-t', '--hash', dest='HashType', action='append', type=str, choices=SupportHashAlgorithmList, help="Hash types {}".format(str(HashAlgorithmMap.keys())), required=True)
+    parser_genswid.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Swid file path', default='', required=True)
+
+    parser_sign = subparsers.add_parser('sign', help='Signed xml file')
+    parser_sign.add_argument('-i', '--input', dest='XmlPath', type=str, help='Xml file path', required=True)
+    parser_sign.add_argument('--privatekey', dest='PrivateKey', type=str, help='Private key for signing (PEM format)', required=True)
+    parser_sign.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
+    parser_sign.add_argument('-o', '--output', dest='SignedXmlPath', type=str, help='SignedXml file path', required=True)
     args = parser.parse_args()
 
-    if not os.path.exists(args.IniPath):
-        raise Exception("ERROR: Could not locate Ini file '%s' !" % args.IniPath)
-    if not os.path.exists(args.Payload):
-        raise Exception("ERROR: Could not locate payload file '%s' !" % args.Payload)
-    if os.path.isabs(args.OutputFile):
-        if not os.path.exists(os.path.dirname(args.OutputFile)):
-            os.makedirs(os.path.dirname(args.OutputFile))
+    if args.which == "genswid":
+        if not os.path.exists(args.IniPath):
+            raise Exception("ERROR: Could not locate Ini file '%s' !" % args.IniPath)
+        if not os.path.exists(args.Payload):
+            raise Exception("ERROR: Could not locate payload file '%s' !" % args.Payload)
+        if os.path.isabs(args.OutputFile):
+            if not os.path.exists(os.path.dirname(args.OutputFile)):
+                os.makedirs(os.path.dirname(args.OutputFile))
 
-    xmlObj = GenXml(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType))
-    xmlObj.genXml()
+        xmlObj = GenXml(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType))
+        xmlObj.genXml()
+    elif args.which == "sign":
+        if not os.path.exists(args.XmlPath):
+            raise Exception("ERROR: Could not locate Xml file '%s' !" % args.XmlPath)
+        if not os.path.exists(args.PrivateKey):
+            raise Exception("ERROR: Could not locate private key file '%s' !" % args.PrivateKey)
+        if not os.path.exists(args.Cert):
+            raise Exception("ERROR: Could not locate cert file '%s' !" % args.Cert)
+        if os.path.isabs(args.SignedXmlPath):
+            if not os.path.exists(os.path.dirname(args.SignedXmlPath)):
+                os.makedirs(os.path.dirname(args.SignedXmlPath))
+
+        SignXmlFile(args.XmlPath, args.PrivateKey, args.Cert, args.SignedXmlPath)
