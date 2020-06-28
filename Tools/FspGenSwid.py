@@ -11,7 +11,7 @@ import hashlib
 import argparse
 import configparser
 from lxml import etree
-from signxml import XMLSigner, methods
+from signxml import XMLSigner, XMLVerifier, methods
 from xml.dom.minidom import Document
 
 TagTypeList   = ['primary', 'corpus', 'patch', 'supplemental']
@@ -219,9 +219,9 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
             swid_builder.versionScheme = GetValueFromSec(ini, section, 'versionscheme')
         elif section.startswith('Entity'):
             Entity = copy.deepcopy(EntityBuilder)
-            Entity['name']  = GetValueFromSec(ini, section, 'name')
-            Entity['regid'] = GetValueFromSec(ini, section, 'regid')
-            Entity['role']  = GetValueFromSec(ini, section, 'role').split(' ')
+            Entity['name']       = GetValueFromSec(ini, section, 'name')
+            Entity['regid']      = GetValueFromSec(ini, section, 'regid')
+            Entity['role']       = GetValueFromSec(ini, section, 'role').split(' ')
             Entity['thumbprint'] = GetValueFromSec(ini, section, 'thumbprint')
             swid_builder.addEntity(Entity)
         elif section == 'Link':
@@ -236,21 +236,21 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
             swid_builder.addLink(Link)
         elif section == 'Meta':
             Meta = copy.deepcopy(MetaBuilder)
-            Meta['activationStatus'] = GetValueFromSec(ini, section, 'activationstatus')
-            Meta['channelType'] = GetValueFromSec(ini, section, 'channeltype')
-            Meta['colloquialVersion'] = GetValueFromSec(ini, section, 'colloquilversion')
-            Meta['description'] = GetValueFromSec(ini, section, 'description')
-            Meta['edition'] = GetValueFromSec(ini, section, 'edition')
+            Meta['activationStatus']        = GetValueFromSec(ini, section, 'activationstatus')
+            Meta['channelType']             = GetValueFromSec(ini, section, 'channeltype')
+            Meta['colloquialVersion']       = GetValueFromSec(ini, section, 'colloquilversion')
+            Meta['description']             = GetValueFromSec(ini, section, 'description')
+            Meta['edition']                 = GetValueFromSec(ini, section, 'edition')
             Meta['entitlementDataRequired'] = GetValueFromSec(ini, section, 'entitlementdatarequired')
-            Meta['entitlementKey'] = GetValueFromSec(ini, section, 'entitlementkey')
-            Meta['generator'] = GetValueFromSec(ini, section, 'generator')
-            Meta['persistentId'] = GetValueFromSec(ini, section, 'persistentid')
-            Meta['productBaseName'] = GetValueFromSec(ini, section, 'productbasename')
-            Meta['productFamily'] = GetValueFromSec(ini, section, 'productfamily')
-            Meta['revision'] = GetValueFromSec(ini, section, 'revision')
-            Meta['summary'] = GetValueFromSec(ini, section, 'summary')
-            Meta['unspscCode'] = GetValueFromSec(ini, section, 'unspsccode')
-            Meta['unspscVersion'] = GetValueFromSec(ini, section, 'unspscversion')
+            Meta['entitlementKey']          = GetValueFromSec(ini, section, 'entitlementkey')
+            Meta['generator']               = GetValueFromSec(ini, section, 'generator')
+            Meta['persistentId']            = GetValueFromSec(ini, section, 'persistentid')
+            Meta['productBaseName']         = GetValueFromSec(ini, section, 'productbasename')
+            Meta['productFamily']           = GetValueFromSec(ini, section, 'productfamily')
+            Meta['revision']                = GetValueFromSec(ini, section, 'revision')
+            Meta['summary']                 = GetValueFromSec(ini, section, 'summary')
+            Meta['unspscCode']              = GetValueFromSec(ini, section, 'unspsccode')
+            Meta['unspscVersion']           = GetValueFromSec(ini, section, 'unspscversion')
             swid_builder.addMeta(Meta)
 
     payload = genFileBuilder(PayloadFile, HashTypes)
@@ -271,17 +271,17 @@ def genFileBuilder(FileName, HashAlgorithms):
     fb['version'] = None
     for HashAlgorithm in HashAlgorithms:
         if HashAlgorithm == 'SHA_256':
-            fb[HashAlgorithm ] = hashlib.sha256(content).hexdigest()
+            fb[HashAlgorithm] = hashlib.sha256(content).hexdigest()
         elif HashAlgorithm == 'SHA_384':
             fb[HashAlgorithm] = hashlib.sha384(content).hexdigest()
         elif HashAlgorithm == 'SHA_512':
-            fb[HashAlgorithm ] = hashlib.sha512(content).hexdigest()
+            fb[HashAlgorithm] = hashlib.sha512(content).hexdigest()
         elif HashAlgorithm == 'SHA_3_256':
-            fb[HashAlgorithm ] = hashlib.sha3_256(content).hexdigest()
+            fb[HashAlgorithm] = hashlib.sha3_256(content).hexdigest()
         elif HashAlgorithm == 'SHA_3_384':
-            fb[HashAlgorithm ] = hashlib.sha3_384(content).hexdigest()
+            fb[HashAlgorithm] = hashlib.sha3_384(content).hexdigest()
         elif HashAlgorithm == 'SHA_3_512':
-            fb[HashAlgorithm ] = hashlib.sha3_512(content).hexdigest()
+            fb[HashAlgorithm] = hashlib.sha3_512(content).hexdigest()
 
     return fb
 
@@ -293,6 +293,8 @@ def SignXmlFile(XmlPath, KeyPath, CertPath, SignedXmlPath):
 
     root = etree.fromstring(data_to_sign)
     signed_root = XMLSigner(method=methods.enveloping).sign(root, key=key, cert=cert)
+    # Verify signature
+    verify_data = XMLVerifier().verify(signed_root, x509_cert=cert).signed_xml
 
     etree.ElementTree(signed_root).write(SignedXmlPath,  pretty_print=True)
 
