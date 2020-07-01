@@ -9,9 +9,11 @@ import os
 import copy
 import cbor
 import json
+import base64
 import hashlib
 import argparse
 import configparser
+from jose import jws
 from pycose.cosemessage import CoseMessage
 from pycose.signmessage import SignMessage
 
@@ -376,9 +378,36 @@ def DecodeCbor(FilePath, Translate):
         print(json.dumps(decodeCborData, sort_keys=True, indent=2))
     else:
         if not isinstance(cborDict, dict):
-            print(cborDict)
+            HierarchyDiplay(str(cborDict).replace(' ', ''))
+
         else:
             print(json.dumps(cborDict, sort_keys=True, indent=2))
+
+def HierarchyDiplay(str):
+    MinIndent = 0
+    MaxIndent = -2
+    for num, i in enumerate(str):
+        if i in ['(', '[']:
+            MaxIndent += 2
+
+    for i in str:
+        if i == ']':
+            MaxIndent -= 2
+            print('\n' + ' ' * MaxIndent, end='')
+        if i == ')':
+            MaxIndent -= 2
+            print('\n' + ' ' * MaxIndent, end='')
+
+        print(i, end='')
+        
+        if i == '(':
+            MinIndent += 2
+            print('\n' + ' ' * MinIndent, end='')
+        if i == ',':
+            print('\n' + ' ' * MinIndent, end='')
+        if i == '[':
+            MinIndent += 2
+            print('\n' + ' ' * MinIndent, end='')
 
 def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
     with open(FilePath, 'rb') as f:
@@ -431,6 +460,29 @@ def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
     #
     # print(cose_msg.verify_signature(alg, signer=1))
 
+#
+# Convert cbor to json and sign the data
+#
+def SignCborByJws(FilePath, Key, Algorithm, SignedJsonPath):
+    with open(FilePath, 'rb') as f:
+        cborData = f.read()
+
+    with open(Key, 'r') as f:
+        key = f.read()
+
+    jsonData = json.dumps(cbor.loads(cborData)).encode()
+    jsonSignData = jws.sign(jsonData, key, algorithm=Algorithm)
+    
+    with open(SignedJsonPath, 'w') as f:
+        f.write(jsonSignData)
+
+    # verify sign data
+    #
+    # with open('ecc-public-key.pem', 'r') as f:
+    #     key = f.read()
+    #
+    # print(jws.verify(jsonSignData, key, Algorithm) == jsonData)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
@@ -452,7 +504,8 @@ if __name__ == "__main__":
     parser_sign.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
     parser_sign.add_argument('--key', dest='Key', type=str, help='Key for signing', required=True)
     parser_sign.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmList, help='Key for signing', required=True)
-    parser_sign.add_argument('-o', '--output', dest='SignedCborPath', type=str, help='SignedCbor file path', required=True)
+    parser_sign.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to sign cbor')
+    parser_sign.add_argument('-o', '--output', dest='SignedCborPath', type=str, help='SignedCbor file path COSE/JWS', required=True)
 
     args = parser.parse_args()
 
@@ -483,4 +536,7 @@ if __name__ == "__main__":
         DecodeCbor(args.File, args.Translate)
 
     if args.which == 'sign':
-        SignCbor(args.File, args.Key, args.Algorithm, args.SignedCborPath)
+        if args.JWS:
+            SignCborByJws(args.File, args.Key, args.Algorithm, args.SignedCborPath)
+        else:
+            SignCbor(args.File, args.Key, args.Algorithm, args.SignedCborPath)
