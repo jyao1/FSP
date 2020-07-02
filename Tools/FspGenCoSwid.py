@@ -1,5 +1,26 @@
 ## @ FspGenCoSwid.py
 #
+# This tool generates signed CBOR format CoSWID tag.
+#
+# Reference:
+#   CoSWID:
+#   SACM: Concise Software Identification Tags, https://datatracker.ietf.org/doc/draft-ietf-sacm-coswid/
+#   RATS: Reference Integrity Measurement Extension for Concise Software Identities, https://datatracker.ietf.org/doc/draft-birkholz-rats-coswid-rim/
+#
+#   CBOR:
+#   [RFC7049] Concise Binary Object Presentation (CBOR), https://tools.ietf.org/html/rfc7049
+#   [RFC8152] CBOR Object Signing and Encryption (COSE), https://tools.ietf.org/html/rfc8152
+#   [RFC8610] Concise Data Definition Language (CDDL), https://tools.ietf.org/html/rfc8610
+#   [RFC8392] CBOR Web Token (CWT), https://tools.ietf.org/html/rfc8392
+#
+#   JSON:
+#   [RFC7515] JSON Web Signature (JWS), https://tools.ietf.org/html/rfc7515
+#   [RFC7516] JSON Web Encryption (JWE), https://tools.ietf.org/html/rfc7516
+#   [RFC7517] JSON Web Key (JWK), https://tools.ietf.org/html/rfc7517
+#   [RFC7518] JSON Web Algorithms (JWA), https://tools.ietf.org/html/rfc7518
+#   [RFC7519] JSON Web Token (JWT), https://tools.ietf.org/html/rfc7519
+#   [RFC7520] Examples of Protecting Content Using JSON Object Signing and Encryption (JOSE), https://tools.ietf.org/html/rfc7520
+#
 # Copyright (c) 2020, Intel Corporation. All rights reserved.<BR>
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 #

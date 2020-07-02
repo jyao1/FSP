@@ -1,5 +1,17 @@
 ## @ FspGenSwid.py
 #
+# This tool generates signed XML format SWID tag.
+#
+# Reference:
+#   SWID:
+#   Software-Identification-SWID, https://csrc.nist.gov/projects/Software-Identification-SWID
+#
+#   XML
+#   https://www.w3.org/XML/
+#   http://www.w3.org/2000/09/xmldsig#enveloped-signature
+#   http://www.w3.org/2001/04/xmlenc#sha256
+#   https://www.w3.org/TR/xmldsig-core1/
+#
 # Copyright (c) 2020, Intel Corporation. All rights reserved.<BR>
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 #
