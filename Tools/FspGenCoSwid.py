@@ -30,11 +30,11 @@ import os
 import copy
 import cbor
 import json
-import base64
 import hashlib
 import argparse
 import configparser
 from jose import jws
+from ecdsa.keys import SigningKey, VerifyingKey
 from pycose.cosemessage import CoseMessage
 from pycose.signmessage import SignMessage
 
@@ -329,6 +329,16 @@ def GetKeyByValue(dict, value):
         if dict[key] == value:
             return key
 
+def DecodeJwt(FilePath):
+    with open(FilePath, 'rb') as f:
+        SignedData = f.read()
+
+    header, payload, signing_input, signature = jws._load(SignedData)
+    print('header: {}'.format(header))
+    print('payload: {}'.format(json.dumps(json.loads(payload), sort_keys=True, indent=2)))
+    print('signing key: {}'.format(signing_input))
+    print('signature: {}'.format(signature))
+
 def DecodeCbor(FilePath, Translate):
     with open(FilePath, 'rb') as f:
         content = f.read()
@@ -435,7 +445,7 @@ def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
         cborData = f.read()
 
     with open(Key, 'r') as f:
-        key = f.read()
+        key = SigningKey.from_pem(f.read())
 
     # /protected/
     # /unprotected/
@@ -471,15 +481,17 @@ def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
     with open(SignedCborPath, 'wb') as f:
         f.write(cbor.dumps(cbor.loads(sign_msg.encode())))
 
-    # verify signature
-    cose_msg = CoseMessage.decode(cbor.dumps(cbor.loads(sign_msg.encode())))
+def VerifySignedCbor(FilePath, Key, Algorithm):
+    with open(FilePath, 'rb') as f:
+        cose_msg = CoseMessage.decode(f.read())
 
-    # cose_msg.key =  key
-    # alg = cose_msg.find_in_headers('alg')
-    #
-    # alg = cose_msg.find_in_signers('alg')
-    #
-    # print(cose_msg.verify_signature(alg, signer=1))
+    with open(Key, 'r') as f:
+        key = VerifyingKey.from_pem(f.read())
+
+    cose_msg.key = key
+    cose_msg.verify_signature(Algorithm, signer=1)
+
+    print("Signature verification passed")
 
 #
 # Convert cbor to json and sign the data
@@ -497,12 +509,16 @@ def SignCborByJws(FilePath, Key, Algorithm, SignedJsonPath):
     with open(SignedJsonPath, 'w') as f:
         f.write(jsonSignData)
 
-    # verify sign data
-    #
-    # with open('ecc-public-key.pem', 'r') as f:
-    #     key = f.read()
-    #
-    # print(jws.verify(jsonSignData, key, Algorithm) == jsonData)
+def VerifySignedJwt(FilePath, Key, Algorithm):
+    with open(FilePath, 'rb') as f:
+        SignedData = f.read()
+
+    with open(Key, 'r') as f:
+        key = f.read()
+
+    jws.verify(SignedData, key, Algorithm, verify=True)
+
+    print("Signature verification passed")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -519,14 +535,22 @@ if __name__ == "__main__":
     parser_decode.set_defaults(which='decode')
     parser_decode.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
     parser_decode.add_argument('-t', '--translate', dest='Translate', action='store_true', help='Flag used to enable translate func')
+    parser_decode.add_argument('--jwt', dest='JWT', action='store_true', help='Flag used to enable decode Json Web Token')
 
     parser_sign = subparsers.add_parser('sign', help='Sign cbor file')
     parser_sign.set_defaults(which='sign')
     parser_sign.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
-    parser_sign.add_argument('--key', dest='Key', type=str, help='Key for signing', required=True)
-    parser_sign.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmList, help='Key for signing', required=True)
+    parser_sign.add_argument('--key', dest='PrivateKey', type=str, help='Private key for signing', required=True)
+    parser_sign.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmList, help='Algorithm for signing', required=True)
     parser_sign.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to sign cbor')
     parser_sign.add_argument('-o', '--output', dest='SignedCborPath', type=str, help='SignedCbor file path COSE/JWS', required=True)
+
+    parser_verify = subparsers.add_parser('verify', help='Verify signature of signed data')
+    parser_verify.set_defaults(which='verify')
+    parser_verify.add_argument('-f', '--file', dest='File', type=str, help='Signed file path', required=True)
+    parser_verify.add_argument('--key', dest='PublicKey', type=str, help='Public key for signing', required=True)
+    parser_verify.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmList, help='Algorithm for signing', required=True)
+    parser_verify.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to verify JWT')
 
     args = parser.parse_args()
 
@@ -550,14 +574,28 @@ if __name__ == "__main__":
             if not os.path.exists(os.path.dirname(args.SignedCborPath)):
                 os.makedirs(os.path.dirname(args.SignedCborPath))
 
+    if args.which == 'verify':
+        if not os.path.exists(args.File):
+            raise Exception("ERROR: Could not locate file '%s' !" % args.File)
+
     if args.which == 'encode':
         Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType))
         Encode.genCobor()
     elif args.which == 'decode':
-        DecodeCbor(args.File, args.Translate)
+        if args.JWT:
+            DecodeJwt(args.File)
+        else:
+            DecodeCbor(args.File, args.Translate)
+
 
     if args.which == 'sign':
         if args.JWS:
-            SignCborByJws(args.File, args.Key, args.Algorithm, args.SignedCborPath)
+            SignCborByJws(args.File, args.PrivateKey, args.Algorithm, args.SignedCborPath)
         else:
-            SignCbor(args.File, args.Key, args.Algorithm, args.SignedCborPath)
+            SignCbor(args.File, args.PrivateKey, args.Algorithm, args.SignedCborPath)
+
+    if args.which == 'verify':
+        if args.JWS:
+            VerifySignedJwt(args.File, args.PublicKey, args.Algorithm)
+        else:
+            VerifySignedCbor(args.File, args.PublicKey, args.Algorithm)
