@@ -305,10 +305,20 @@ def SignXmlFile(XmlPath, KeyPath, CertPath, SignedXmlPath):
 
     root = etree.fromstring(data_to_sign)
     signed_root = XMLSigner(method=methods.enveloping).sign(root, key=key, cert=cert)
-    # Verify signature
-    verify_data = XMLVerifier().verify(signed_root, x509_cert=cert).signed_xml
 
-    etree.ElementTree(signed_root).write(SignedXmlPath,  pretty_print=True)
+    etree.ElementTree(signed_root).write(SignedXmlPath)
+
+def VerifySianXmlFile(SignedXmlPath, CertPath):
+    with open(CertPath, 'r') as f:
+        cert = f.read()
+
+    with open(SignedXmlPath, 'rb') as f:
+        SignedXmlData = etree.fromstring(f.read())
+
+    # Verify signature
+    verify_data = XMLVerifier().verify(SignedXmlData, x509_cert=cert).signed_xml
+
+    print("Signature verification passed")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -325,6 +335,10 @@ if __name__ == "__main__":
     parser_sign.add_argument('--privatekey', dest='PrivateKey', type=str, help='Private key for signing (PEM format)', required=True)
     parser_sign.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
     parser_sign.add_argument('-o', '--output', dest='SignedXmlPath', type=str, help='SignedXml file path', required=True)
+
+    parser_verify = subparsers.add_parser('verify', help='Signed xml file')
+    parser_verify.add_argument('-i', '--input', dest='SignedXmlPath', type=str, help='Signed Xml file path', required=True)
+    parser_verify.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
     args = parser.parse_args()
 
     if args.which == "genswid":
@@ -350,3 +364,10 @@ if __name__ == "__main__":
                 os.makedirs(os.path.dirname(args.SignedXmlPath))
 
         SignXmlFile(args.XmlPath, args.PrivateKey, args.Cert, args.SignedXmlPath)
+    elif args.which == "verify":
+        if not os.path.exists(args.SignedXmlPath):
+            raise Exception("ERROR: Could not locate signed Xml file '%s' !" % args.SignedXmlPath)
+        if not os.path.exists(args.Cert):
+            raise Exception("ERROR: Could not locate cert file '%s' !" % args.Cert)
+
+        VerifySianXmlFile(args.SignedXmlPath, args.Cert)

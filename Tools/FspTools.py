@@ -9,10 +9,59 @@ import os
 import sys
 import uuid
 import hashlib
+import operator
 import argparse
 import subprocess
 from   ctypes import *
 from functools import reduce
+
+TPM_ALG_SHA1    = 0x4
+TPM_ALG_SHA256  = 0xB
+TPM_ALG_SM3_256 = 0x12
+TPM_ALG_SHA384  = 0xC
+TPM_ALG_SHA512  = 0xD
+
+SHA1_DIGEST_SIZE    = 20
+SHA256_DIGEST_SIZE  = 32
+SM3_256_DIGEST_SIZE = 32
+SHA384_DIGEST_SIZE  = 48
+SHA512_DIGEST_SIZE  = 64
+
+#
+# TCG Algorithm Registry
+#
+
+HASH_ALG_SHA1    = 0x00000001
+HASH_ALG_SHA256  = 0x00000002
+HASH_ALG_SHA384  = 0x00000004
+HASH_ALG_SHA512  = 0x00000008
+HASH_ALG_SM3_256 = 0x00000010
+
+HashInfo = [[TPM_ALG_SHA1, SHA1_DIGEST_SIZE, HASH_ALG_SHA1],
+            [TPM_ALG_SHA256, SHA256_DIGEST_SIZE, HASH_ALG_SHA256],
+            [TPM_ALG_SM3_256, SM3_256_DIGEST_SIZE, HASH_ALG_SHA384],
+            [TPM_ALG_SHA384, SHA384_DIGEST_SIZE, HASH_ALG_SHA512],
+            [TPM_ALG_SHA512, SHA512_DIGEST_SIZE, HASH_ALG_SM3_256]]
+
+#
+# EFI specific event types
+#
+EV_EFI_EVENT_BASE                   = 0x80000000
+EV_EFI_VARIABLE_DRIVER_CONFIG       = EV_EFI_EVENT_BASE + 1
+EV_EFI_VARIABLE_BOOT                = EV_EFI_EVENT_BASE + 2
+EV_EFI_BOOT_SERVICES_APPLICATION    = EV_EFI_EVENT_BASE + 3
+EV_EFI_BOOT_SERVICES_DRIVER         = EV_EFI_EVENT_BASE + 4
+EV_EFI_RUNTIME_SERVICES_DRIVER      = EV_EFI_EVENT_BASE + 5
+EV_EFI_GPT_EVENT                    = EV_EFI_EVENT_BASE + 6
+EV_EFI_ACTION                       = EV_EFI_EVENT_BASE + 7
+EV_EFI_PLATFORM_FIRMWARE_BLOB       = EV_EFI_EVENT_BASE + 8
+EV_EFI_HANDOFF_TABLES               = EV_EFI_EVENT_BASE + 9
+EV_EFI_PLATFORM_FIRMWARE_BLOB2      = EV_EFI_EVENT_BASE + 0xA
+EV_EFI_HANDOFF_TABLES2              = EV_EFI_EVENT_BASE + 0xB
+EV_EFI_HCRTM_EVENT                  = EV_EFI_EVENT_BASE + 0x10
+EV_EFI_VARIABLE_AUTHORITY           = EV_EFI_EVENT_BASE + 0xE0
+EV_EFI_SPDM_FIRMWARE_BLOB           = EV_EFI_EVENT_BASE + 0xE1
+EV_EFI_SPDM_FIRMWARE_CONFIG         = EV_EFI_EVENT_BASE + 0xE2
 
 class c_uint24(Structure):
     """Little-Endian 24-bit Unsigned Integer"""
@@ -35,6 +84,43 @@ class c_uint24(Structure):
         return Bytes2Val(self.Data[0:3])
 
     value = property(get_value, set_value)
+
+class tdTCG_PCR_EVENT_HDR(Structure):
+    _fields_ = [
+        ('pcrIndex',        c_uint32),
+        ('eventType',       c_uint32),
+        ('digest',          ARRAY(c_uint8, 20)),
+        ('eventDataSize',   c_uint32)
+        ]
+
+class TPMU_HA(Union):
+    _fields_ = [
+        ('sha1',            ARRAY(c_uint8, SHA1_DIGEST_SIZE)),
+        ('sha256',          ARRAY(c_uint8, SHA256_DIGEST_SIZE)),
+        ('sm3_256',         ARRAY(c_uint8, SM3_256_DIGEST_SIZE)),
+        ('sha384',          ARRAY(c_uint8, SHA384_DIGEST_SIZE)),
+        ('sha512',          ARRAY(c_uint8, SHA512_DIGEST_SIZE)),
+    ]
+
+class TPMT_HA(Structure):
+    _fields_ = [
+        ('hashAlg',         c_uint16),
+        ('digest',          TPMU_HA),
+    ]
+
+class TPML_DIGEST_VALUES(Structure):
+    _fields_ = [
+        ('count',        c_uint32),
+        ('digests',      ARRAY(TPMT_HA, 5)),
+    ]
+
+class tdTCG_PCR_EVENT2_HDR(Structure):
+    _fields_ = [
+        ('pcrIndex',        c_uint32),
+        ('eventType',       c_uint32),
+        ('digests',         TPML_DIGEST_VALUES),
+        ('eventDataSize',   c_uint32)
+        ]
 
 class EFI_FIRMWARE_VOLUME_HEADER(Structure):
     _fields_ = [
@@ -413,10 +499,14 @@ class FirmwareFile:
         if self.FfsHdr.Name != '\xff' * 16:
             while offset < (ffssize - sizeof (EFI_COMMON_SECTION_HEADER)):
                 sechdr = EFI_COMMON_SECTION_HEADER.from_buffer (self.FfsData, offset)
-                sec = Section (offset, self.FfsData[offset:offset + int(sechdr.Size)])
-                self.SecList.append(sec)
-                offset += int(sechdr.Size)
-                offset  = AlignPtr(offset, 4)
+                if int(sechdr.Size) < 0x4:
+                    offset += int(sizeof(EFI_COMMON_SECTION_HEADER)) + int(sechdr.Size)
+                    offset = AlignPtr(offset, 4)
+                else:
+                    sec = Section (offset, self.FfsData[offset:offset + int(sechdr.Size)])
+                    self.SecList.append(sec)
+                    offset += int(sechdr.Size)
+                    offset  = AlignPtr(offset, 4)
 
 class FirmwareVolume:
     def __init__(self, offset, fvdata):
@@ -493,6 +583,22 @@ class FirmwareDevice:
         hfsp = open (self.FdFile, 'rb')
         self.FdData = bytearray(hfsp.read())
         hfsp.close()
+
+    def ParsePlatformFd(self):
+        offset = 0
+        fdsize = len(self.FdData)
+        self.FvList = []
+        while (offset < fdsize):
+            content = self.FdData[offset:offset + 4]
+
+            if content == b'_FVH':
+                fvOffset = offset - 40
+                fvh = EFI_FIRMWARE_VOLUME_HEADER.from_buffer(self.FdData, fvOffset)
+                if fvOffset + fvh.FvLength < fdsize:
+                    fv = FirmwareVolume(fvOffset, self.FdData[fvOffset:fvOffset + fvh.FvLength])
+                    fv.ParseFv()
+                    self.FvList.append(fv)
+            offset += 4
 
     def ParseFd(self):
         offset = 0
@@ -1000,6 +1106,85 @@ def DecodeSignedFspManifest(SignedFspManifest, TrustedPublicCertFile, SignatureS
     fd.write(FspManifestBuffer)
     fd.close()
 
+class CompareFspComponentHash():
+    def __init__(self, bin_path, fd_path):
+        self.BinPath = bin_path
+        self.FdPath  = fd_path
+
+        self.HashDict1 = {'FSPT': '', 'FSPM': '', 'FSPS': ''}
+        self.HashDict2 = {'FSPT': '', 'FSPM': '', 'FSPS': ''}
+
+    def GetHashSizeFromAlgo(self, HashAlgo):
+        for item in HashInfo:
+            if HashAlgo == item[0]:
+                return item[1]
+        return 0
+
+    def GetPcrEvent2Size(self, PcrEvent2Hdr, Buffer, Offset):
+        DigestCount = PcrEvent2Hdr.digests.count
+        HashAlgo = PcrEvent2Hdr.digests.digests[0].hashAlg
+        DigestSize = self.GetHashSizeFromAlgo(HashAlgo)
+        DigestOffset = Offset + 3 * sizeof(c_uint32) + sizeof(c_uint16)
+        Digest = Buffer[DigestOffset: DigestOffset + DigestSize]
+
+        EventDataSizeOffset = Offset + 3 * sizeof(c_uint32) + DigestSize + sizeof(c_uint16)
+        EventDataSize = c_uint32.from_buffer(Buffer, EventDataSizeOffset).value
+
+        EventDataOffset = EventDataSizeOffset + sizeof(c_uint32)
+        if PcrEvent2Hdr.eventType == EV_EFI_PLATFORM_FIRMWARE_BLOB2:
+            BlobDescriptionSize = c_uint8.from_buffer(Buffer, EventDataOffset).value
+            BlobDescription = Buffer[EventDataOffset + sizeof(c_uint8): EventDataOffset + sizeof(c_uint8) + BlobDescriptionSize].decode()
+            for key in self.HashDict1.keys():
+                if BlobDescription.startswith(key):
+                    self.HashDict1[key] = bytearray.hex(Digest)
+
+        Event2Size = EventDataOffset + EventDataSize - Offset
+        return Event2Size
+
+    def GetHashFromBin(self):
+        with open(self.BinPath, 'rb') as f:
+            BinData = bytearray(f.read())
+
+        offset = 0
+        BinLength = len(BinData)
+
+        while offset < (BinLength - sizeof(tdTCG_PCR_EVENT2_HDR)):
+            if offset == 0:
+                PcrEventHdr = tdTCG_PCR_EVENT_HDR.from_buffer(BinData, offset)
+                offset += sizeof(tdTCG_PCR_EVENT_HDR) + PcrEventHdr.eventDataSize
+            else:
+                PcrEvent2Hdr = tdTCG_PCR_EVENT2_HDR.from_buffer(BinData, offset)
+                offset += self.GetPcrEvent2Size(PcrEvent2Hdr, BinData, offset)
+
+
+    def GetHashFromFd(self):
+        fd = FirmwareDevice(0, self.FdPath)
+        fd.ParsePlatformFd()
+        fd.ParseFsp()
+
+        for fsp in fd.FspList:
+            ImageSize = fsp.Fih.ImageSize
+            CfgRegionOffset = fsp.Fih.CfgRegionOffset
+            CfgRegionSize = fsp.Fih.CfgRegionSize
+
+            FspAddr = fsp.Offset
+            fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
+
+            hash_out = hashlib.sha256(fspData).hexdigest()
+            self.HashDict2['FSP' + fsp.Type] = hash_out
+
+    def Compare(self):
+        self.GetHashFromBin()
+        self.GetHashFromFd()
+        
+        print(self.HashDict1)
+        print(self.HashDict2)
+            
+        if operator.eq(self.HashDict1, self.HashDict2):
+            print('Compare FSP component hash bettween Tcg event log binary and platform image [PASS]')
+        else:
+            print('Compare FSP component hash bettween Tcg event log binary and platform image [FAIL]')
+            
 
 def main ():
     parser     = argparse.ArgumentParser()
@@ -1040,6 +1225,11 @@ def main ():
     parser_decode.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
     parser_decode.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
 
+    parser_compare = subparsers.add_parser('compare', help='Compare FSP component hash bettween event log binary and platform image')
+    parser_compare.set_defaults(which='compare')
+    parser_compare.add_argument('--evt', dest='EventLogBin', type=str, help='Event log binary file path', required=True)
+    parser_compare.add_argument('--fd', dest='PlatformImage', type=str, help='Platform image file path', required=True)
+
     parser_info = subparsers.add_parser('info',  help='display FSP information')
     parser_info.set_defaults(which='info')
     parser_info.add_argument('-f',  '--fspbin' , dest='FspBinary', type=str, help='FSP binary file path', required = True)
@@ -1070,6 +1260,12 @@ def main ():
         if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
             raise Exception ("ERROR: Invalid output directory '%s' !" % args.OutputDir)
 
+    if args.which == 'compare':
+        if not os.path.exists(args.EventLogBin):
+            raise Exception("ERROR: Could not locate event log binary file '%s' !" % args.EventLogBin)
+        if not os.path.exists(args.PlatformImage):
+            raise Exception("ERROR: Could not locate platform image file '%s' !" % args.PlatformImage)
+
     if args.which == 'rebase':
         RebaseFspBin (args.FspBinary, args.FspComponent, args.FspBase, args.OutputDir, args.OutputFile)
     elif args.which == 'hash':
@@ -1082,6 +1278,9 @@ def main ():
         DecodeSignedFspManifest (args.SignedFspManifest, args.TrustedPublicCertFile, args.SignatureSizeStr, args.OutputDir, args.OutputFile)
     elif args.which == 'info':
         ShowFspInfo (args.FspBinary)
+    elif args.which == 'compare':
+        comp = CompareFspComponentHash(args.EventLogBin, args.PlatformImage)
+        comp.Compare()
     else:
         parser.print_help()
 
