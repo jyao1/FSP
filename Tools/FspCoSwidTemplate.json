@@ -1,0 +1,85 @@
+{
+    "concise-swid-tag" : {
+        "tag-id" : "CC92BA16-8450-4C4B-8EFA-F34D5299D5E0",
+        "tag-version" : "0",
+        "corpus" : "false",
+        "patch" : "false",
+        "supplemental" : "false",
+        "software-name" : "AmberLakeFspBin",
+        "software-version" : "01",
+        "version-scheme" : "alphanumeric",
+        "media" : "https://github.com/intel/FSP/AmberLakeFspBinPkg",
+        "software-meta" : {
+            "colloquial-version" : "AmberLakeFsp_3.7.6",
+            "edition" : "FSP",
+            "product" : "AmberLakeFsp",
+            "revision" : "3.7.6"
+        },
+        "entity" : {
+            "entity-name" : "Intel",
+            "reg-id" : "http://www.intel.com",
+            "role" : "software-creator,tag-creator",
+            "thumbprint" : {
+                "hash-alg-id" : "sha256",
+                "hash-value" : "1234567812345678123456781234567812345678123456781234567812345678"
+            }
+        },
+        "link" : {
+            "href" : "https://github.com/intel/FSP/AmberLakeFspBinPkg",
+            "rel" : "installationmedia"
+        },
+        "payload" : {
+            "path-elements-group" : {
+                "directory" : {
+                    "filesystem-item" : {"fs-name" : "Fsp.fd"}
+                },
+                "file" : {
+                    "filesystem-item" : {"fs-name" : "FSPT"},
+                    "size" : "12288",
+                    "hash" : {
+                        // https://www.iana.org/assignments/named-information/named-information.xhtml
+                        "hash-alg-id" : "1", // sha256
+                        "hash-value" : "f661b552d0931238c46dd38fd900b8a33049042d95220c8388c3986671e3dd10"
+                    }
+                },
+                "file" : {
+                    "filesystem-item" : {"fs-name" : "FSPM"},
+                    "size" : "417792",
+                    "hash" : {
+                        // https://www.iana.org/assignments/named-information/named-information.xhtml
+                        "hash-alg-id" : "1", // sha256
+                        "hash-value" : "b70ed0f8800d4d21e19e459bd9f58e3a90e39b7bfc3aa7d72ca7aaaf83d74856"
+                    }
+                },
+                "file" : {
+                    "filesystem-item" : {"fs-name" : "FSPS"},
+                    "size" : "188416",
+                    "hash" : {
+                        // https://www.iana.org/assignments/named-information/named-information.xhtml
+                        "hash-alg-id" : "1", // sha256
+                        "hash-value" : "11fbcfd691a7458031b08fed615f798a1090c81ddb65a83869e28b405a6380b0"
+                    }
+                }
+            }
+        },
+        "reference-measurement-entry" : {
+            "payload-type" : "direct",
+            "platform-configuration-uri-global" : "any-uri",
+            "platform-configuration-uri-local" : "any-uri",
+            "binding-spec-name" : "TCG RIM",
+            "binding-spec-version" : "1.2",
+            "platform-manufacturer-id" : "343",
+            "platform-manufacturer-name" : "intel",
+            "platform-model-name" : "AmberLake",
+            "platform-version" : "198406",
+            "firmware-manufacturer-id" : "343",
+            "firmware-manufacturer-name" : "intel",
+            "firmware-model-name" : "",
+            "firmware-version" : "198406",
+            "rim-link-hash" :  {
+                "hash-alg-id" : "1",
+                "hash-value" : "88f21d8e44d4271149297404df91caf207130bfa116582408abd04ede6db7f51"
+            }
+        }
+    }
+  }

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<SoftwareIdentity
+    xmlns="http://standards.iso.org/iso/19770/-2/2015/schema.xsd"
+    xmlns:n8060="http://csrc.nist.gov/ns/swid/2015-extensions/1.0"
+    xml:lang="en-US"
+    supplemental="false"
+    patch="false"
+    corpus="false"
+    tagVersion="0"
+    tagId="CC92BA16-8450-4C4B-8EFA-F34D5299D5E0"
+    version="01"
+    versionScheme="alphanumeric"
+    name="AmberLakeFspBin" >
+
+    <Entity
+        name="Intel Corporation"
+        role="softwareCreator tagCreator"
+        regid="http://www.intel.com"/>
+
+    <Link
+        href="https://github.com/intel/FSP/AmberLakeFspBinPkg"
+        rel="installationmedia"/>
+
+    <Meta xmlns:rim="https://trustedcomputinggroup.org/wp-content/uploads/TCG_RIM_Model"
+        colloquialVersion="AmberLakeFsp_3.7.6"
+        edition="FSP"
+        product="AmberLakeFsp"
+        revision="3.7.6"
+        rim:pcURILocal="/boot/tcg/manifest/swidtag"
+        rim:BindingSpec="TCG RIM"
+        rim:BindingSpecVersion="1.2"
+        rim:PlatformManufacturerId="343"
+        rim:PlatformManufacturerStr="Intel"
+        rim:PlatformModel="AmberLake"
+        rim:FirmwareManufacturer="Intel"
+        rim:FirmwareManufacturerId="343"
+        rim:RIMLinkHash="88f21d8e44d4271149297404df91caf207130bfa116582408abd04ede6db7f51"/>
+
+    <Payload xmlns:SHA256="http://www.w3.org/2001/04/xmlenc#sha256"
+        n8060:envVarPrefix="$" n8060:envVarSuffix="" n8060:pathSeparator="/">
+        <Directory
+            name="FSP binary"
+            location="/Fsp.fd">
+            <File
+                name="FSPT"
+                size="12288"
+                SHA256:hash="f661b552d0931238c46dd38fd900b8a33049042d95220c8388c3986671e3dd10"/>
+            <File
+                name="FSPM"
+                size="417792"
+                SHA256:hash="b70ed0f8800d4d21e19e459bd9f58e3a90e39b7bfc3aa7d72ca7aaaf83d74856"/>
+            <File
+                name="FSPS"
+                size="188416"
+                SHA256:hash="11fbcfd691a7458031b08fed615f798a1090c81ddb65a83869e28b405a6380b0"/>
+        </Directory>
+    </Payload>
+
+    <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+        <ds:SignedInfo>
+            <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+            <ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha512"/>
+            <ds:Reference URI="">
+                <ds:Transforms>
+                    <ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+                </ds:Transforms>
+                <ds:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha256"/>
+                    <ds:DigestValue>8A4C98225D855D388B42FD8AA4FA1646CFAC666E43FD6A7B950BB3E0B12134AA
+                </ds:DigestValue>
+            </ds:Reference>
+        </ds:SignedInfo>
+        <ds:SignatureValue>
+            TSQUoVrQ0kg1eiltNwIhKPrIdsi1VhWjYNJlXvfQqW2EKk3X37X862SCfrz
+            7v8IYJ7OorWwlFpGDStJDSR6saOScqSvmesCrGEEq+U6zegR9nH0lvcGZ8
+            Rvc/y7U9kZrE4fHqEiLyfpmzJyPmWUT9Uta14nPJYsl3cmdThHB8Bs=
+        </ds:SignatureValue>
+        <ds:KeyInfo>
+            <ds:KeyName>
+                "fd:a4:66:55:cf:7b:98:1c"
+            </ds:KeyName>
+            <ds11:KeyInfoReference xmlns:ds11="http://www.w3.org/2009/xmldsig11#">
+                uri="https://Example.com/support/certificates/RIMSignerCert.pem"
+            </ds11:KeyInfoReference>
+        </ds:KeyInfo>
+    </ds:Signature>
+
+</SoftwareIdentity>
