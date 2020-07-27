@@ -19,18 +19,15 @@
 
 import os
 import copy
-import hashlib
 import argparse
+import subprocess
 import configparser
 from lxml import etree
 from signxml import XMLSigner, XMLVerifier, methods
 from xml.dom.minidom import Document
 
-TagTypeList   = ['primary', 'corpus', 'patch', 'supplemental']
 RoleList      = ['aggregator', 'distributor', 'licensor', 'softwareCreator', 'tagCreator']
-UseList       = ['required', 'recommended', 'optional']
-OwnershipList = ['abandon', 'private', 'shared']
-VersionSchemeList = ['multipartnumeric', 'multipartnumeric+suffix', 'alphanumeric', 'decimal', 'semver', 'unknown']
+
 HashAlgorithmMap = {"SHA_256": "http://www.w3.org/2001/04/xmlenc#sha256",
                     "SHA_256_128": "http://www.w3.org/2001/04/xmlenc#sha256",
                     "SHA_256_120": "http://www.w3.org/2001/04/xmlenc#sha256",
@@ -44,26 +41,29 @@ HashAlgorithmMap = {"SHA_256": "http://www.w3.org/2001/04/xmlenc#sha256",
                     "SHA_3_384": "http://www.w3.org/2007/05/xmldsig-more#sha3-384",
                     "SHA_3_512": "http://www.w3.org/2007/05/xmldsig-more#sha3-512"}
 
-EntityBuilder = {'name': '', 'role': [], 'regid': '', 'thumbprint': ''}
+EntityBuilder = {'name': '', 'role': '', 'regid': '', 'thumbprint': ''}
 LinkBuilder = {'artifact': '', 'href': '', 'media': '', 'ownership': '', 'rel': '', 'type': '', 'use': ''}
-MetaBuilder = {'activationStatus': '', 'channelType': '', 'colloquialVersion': '', 'description': '', 'edition': '', 'entitlementDataRequired': '',
-               'entitlementKey': '', 'generator': '', 'persistentId': '', 'productBaseName': '', 'productFamily': '', 'revision': '', 'summary': '',
-               'unspscCode': '', 'unspscVersion': ''}
+
+MetaBuilder = {'colloquialVersion': '', 'edition': '', 'product': '', 'revision': '', 'PayloadType': '', 'PlatformManufacturerStr': '',
+               'PlatformManufacturerId': '', 'PlatformModel': '', 'PlatformVersion': '', 'FirmwareManufacturerStr': '', 'FirmwareManufacturerId': '',
+               'FirmwareMode': '', 'FirmwareVersion': '', 'BindingSpec': '', 'BindingSpecVersion': '', 'pcURIlocal': '', 'pcURIGlobal': '', 'RIMLinkHash': ''}
+
+DirectoryBuilder = {'name': '', 'location': '', 'file': []}
 FileBuilder = {'name': '', 'size': '', 'version': ''}
-EvidenceBuilder = {'date': '', 'deviceId': '', }
 
 SupportHashAlgorithmList = ["SHA_256", "SHA_384", "SHA_512", "SHA_3_256", "SHA_3_384", "SHA_3_512"]
 
 class SWIDBuilder:
     def __init__(self):
-        self.tagType = 0
         self.name = None
         self.tagId = None
         self.tagVersion = None
         self.version = None
+        self.corpus = None
+        self.patch = None
+        self.supplemental = None
         self.versionScheme = None
         self.entities = []
-        self.evidence = []
         self.links = []
         self.metas = []
         self.payload = []
@@ -84,82 +84,98 @@ class GenXml():
     def __init__(self, XmlPath, SWIDBuilder):
         self.XmlPath = XmlPath
         self.SWIDBuilder = SWIDBuilder
+        self.NameSpace = 'http://standards.iso.org/iso/19770/-2/2015/schema.xsd'
+        self.NameSpace8060 = 'http://csrc.nist.gov/ns/swid/2015-extensions/1.0'
+        self.MetaAttNonEmptyList = ['colloquialVersion', 'edition', 'product', 'revision', 'PlatformManufacturerStr',
+                                    'PlatformManufacturerId', 'PlatformModel', 'BindingSpec', 'BindingSpecVersion', 'RIMLinkHash']
+        self.MetaAttOfRimList = ['PayloadType', 'PlatformManufacturerStr', 'PlatformManufacturerId', 'PlatformModel',
+                                 'PlatformVersion', 'FirmwareManufacturerStr', 'FirmwareManufacturerId', 'FirmwareMode',
+                                 'FirmwareVersion', 'BindingSpec', 'BindingSpecVersion', 'pcURIlocal', 'pcURIGlobal', 'RIMLinkHash']
 
     def buildAttribute(self, attributeName, value, element):
         if (value != None):
             element.setAttribute(attributeName, value)
 
-    def buildAbstractResourceCollectionBuilder(self, doc, root, element, data):
-        FileElement = doc.createElement('File')
-        for key in data.keys():
-            if not key.startswith('SHA'):
-                if data[key] != None:
-                    FileElement.setAttribute(key, str(data[key]))
-            else:
-                hashQualifiedName = 'SHA' + key.split("_")[-1] + ':hash'
-                root.setAttributeNS("http://standards.iso.org/iso/19770/-2/2015/schema.xsd", 'xmlns:' + 'SHA' + key.split("_")[-1], HashAlgorithmMap[key])
-                FileElement.setAttributeNS(HashAlgorithmMap[key], hashQualifiedName, str(data[key]))
+    def buildAbstractResourceCollectionBuilder(self, doc, element, data):
+        DirectoryElement = doc.createElement('Directory')
+        DirectoryElement.setAttribute('name', data['name'])
+        DirectoryElement.setAttribute('location', data['location'])
 
-        element.appendChild(FileElement)
+        for file in data['file']:
+            FileElement = doc.createElement('File')
+            for key in file.keys():
+                if not key.startswith('SHA'):
+                    if file[key] != None and file[key] != '':
+                        FileElement.setAttribute(key, str(file[key]))
+                else:
+                    hashQualifiedName = 'SHA' + key.split("_")[-1] + ':hash'
+                    element.setAttributeNS(self.NameSpace, 'xmlns:' + 'SHA' + key.split("_")[-1], HashAlgorithmMap[key])
+                    FileElement.setAttributeNS(HashAlgorithmMap[key], hashQualifiedName, str(file[key]))
+            DirectoryElement.appendChild(FileElement)
+
+        element.appendChild(DirectoryElement)
 
     def validateNonEmpty(self, tagName, value):
-        if value == None or value == []:
-            raise Exception("the field {} must contain a non-empty value".format(tagName))
+        if value == None or value == [] or value == '':
+            raise Exception('The field "{}" must contain a non-empty value'.format(tagName))
 
     def validateEntity(self, entity):
         self.validateNonEmpty('name', entity['name'])
         self.validateNonEmpty('role', entity['role'])
+        self.validateNonEmpty('thumbprint', entity['thumbprint'])
 
     def validateLink(self, link):
         self.validateNonEmpty('href', link['href'])
         self.validateNonEmpty('rel', link['rel'])
 
-    def validatePayload(self, payload):
-        self.validateNonEmpty('name', payload['name'])
+    def validateMeta(self, meta):
+        for AttributeName in self.MetaAttNonEmptyList:
+            self.validateNonEmpty(AttributeName, meta[AttributeName])
 
     def validate(self):
         self.validateNonEmpty('name', self.SWIDBuilder.name)
+        self.validateNonEmpty('version', self.SWIDBuilder.tagId)
         self.validateNonEmpty('tagId', self.SWIDBuilder.tagId)
+        self.validateNonEmpty('tagVersion', self.SWIDBuilder.tagVersion)
         self.validateNonEmpty('entity', self.SWIDBuilder.entities)
+        self.validateNonEmpty('meta', self.SWIDBuilder.metas)
 
         foundTagCreator = False
         for entity in self.SWIDBuilder.entities:
             self.validateEntity(entity)
+            for role in entity['role'].split(' '):
+                if role not in RoleList:
+                    raise Exception('Role "{}" should be one in [{}].'.format(role, ' '.join(RoleList)))
             if 'tagCreator' in entity['role']:
                 foundTagCreator = True
 
         if not foundTagCreator:
             raise Exception('at least one entity with role, tagCreator must be provided.')
 
-        if self.SWIDBuilder.payload != [] and self.SWIDBuilder.evidence != []:
-            raise Exception('Only one of evidence or payload must be provided.')
-
-        if self.SWIDBuilder.payload != []:
-            self.validatePayload(self.SWIDBuilder.payload[0])
-
         for link in self.SWIDBuilder.links:
             self.validateLink(link)
+
+        for meta in self.SWIDBuilder.metas:
+            self.validateMeta(meta)
 
     def genXml(self):
         self.validate()
         doc = Document()
         root = doc.createElement('SoftwareIdentity')
 
-        root.setAttribute('xmlns', 'http://standards.iso.org/iso/19770/-2/2015/schema.xsd')
-        root.setAttribute('name', str(self.SWIDBuilder.name))
-        root.setAttribute('tagId', str(self.SWIDBuilder.tagId))
+        # Required
+        root.setAttribute('xmlns', self.NameSpace)
+        root.setAttributeNS(self.NameSpace, 'xmlns:n8060', self.NameSpace8060)
+        root.setAttribute('name', self.SWIDBuilder.name)
+        root.setAttribute('version', self.SWIDBuilder.version)
+        root.setAttribute('tagId', self.SWIDBuilder.tagId)
+        root.setAttribute('tagVersion', self.SWIDBuilder.tagVersion)
 
-        if self.SWIDBuilder.tagType not in TagTypeList:
-            raise Exception("TagType: {} is illegal".format(self.SWIDBuilder.tagType ))
-        elif self.SWIDBuilder.tagType == 'primary':
-            pass
-        else:
-            root.setAttribute(self.SWIDBuilder.tagType, "true")
-
-        root.setAttribute('tagVersion', str(self.SWIDBuilder.tagVersion))
-
-        self.buildAttribute("version", self.SWIDBuilder.version, root);
-        self.buildAttribute("versionScheme", self.SWIDBuilder.versionScheme, root);
+        # Optional
+        self.buildAttribute('corpus', self.SWIDBuilder.corpus, root)
+        self.buildAttribute('patch', self.SWIDBuilder.patch, root)
+        self.buildAttribute('supplemental', self.SWIDBuilder.supplemental, root)
+        self.buildAttribute('versionScheme', self.SWIDBuilder.versionScheme, root)
 
         # child element
         # Required
@@ -167,46 +183,44 @@ class GenXml():
             for entity in self.SWIDBuilder.entities:
                 EntityElement = doc.createElement('Entity')
                 for att in entity.keys():
-                    if entity[att] != None and entity[att] != []:
-                        if att != 'roles':
-                            EntityElement.setAttribute(att, str(entity[att]))
-                        else:
-                            EntityElement.setAttribute('role', ' '.join(entity[att]))
+                    if entity[att] != None:
+                        EntityElement.setAttribute(att, entity[att])
 
                 root.appendChild(EntityElement)
-
-        # Optional
-        # need to fix
-        if self.SWIDBuilder.evidence != []:
-            EvidenceElement = doc.createElement('Evidencce')
 
         if self.SWIDBuilder.links != []:
             for link in self.SWIDBuilder.links:
                 LinkElement = doc.createElement('Link')
                 for att in link.keys():
                     if link[att] != None:
-                        LinkElement.setAttribute(att, str(link[att]))
+                        LinkElement.setAttribute(att, link[att])
 
                 root.appendChild(LinkElement)
 
         if self.SWIDBuilder.metas != []:
             for meta in self.SWIDBuilder.metas:
                 MetaElement = doc.createElement('Meta')
+                MetaElement.setAttributeNS(self.NameSpace, 'xmlns:rim', 'https://trustedcomputinggroup.org/wp-content/uploads/TCG_RIM_Model')
                 for att in meta.keys():
-                    if meta[att] != None:
-                        MetaElement.setAttribute(att, str(meta[att]))
+                    if meta[att] != None and att not in self.MetaAttOfRimList:
+                        MetaElement.setAttribute(att, meta[att])
+                    elif meta[att] != None and att in self.MetaAttOfRimList:
+                        MetaElement.setAttribute('rim:' + att, meta[att])
 
                 root.appendChild(MetaElement)
 
         if self.SWIDBuilder.payload != []:
             PayloadElement = doc.createElement('Payload')
-            self.buildAbstractResourceCollectionBuilder(doc, root, PayloadElement, self.SWIDBuilder.payload[0])
+            PayloadElement.setAttributeNS(self.NameSpace8060, 'n8060:envVarPrefix', '$')
+            PayloadElement.setAttributeNS(self.NameSpace8060, 'n8060:envVarSuffix', '')
+            PayloadElement.setAttributeNS(self.NameSpace8060, 'n8060:pathSeparator', '/')
+            self.buildAbstractResourceCollectionBuilder(doc, PayloadElement, self.SWIDBuilder.payload[0])
             root.appendChild(PayloadElement)
 
         doc.appendChild(root)
 
         with open(self.XmlPath, 'w') as f:
-            doc.writexml(f, indent='\t', addindent='\t', newl='\n', encoding="utf-8")
+            doc.writexml(f, indent='', addindent='\t', newl='\n', encoding="utf-8")
 
 def GetValueFromSec(ini_obj, section, option):
     if ini_obj.has_option(section, option):
@@ -226,76 +240,57 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
             swid_builder.name          = GetValueFromSec(ini, section, 'name')
             swid_builder.tagId         = GetValueFromSec(ini, section, 'tagid')
             swid_builder.version       = GetValueFromSec(ini, section, 'version')
-            swid_builder.tagType       = GetValueFromSec(ini, section, 'tagtype')
+            swid_builder.corpus        = GetValueFromSec(ini, section, 'corpus').lower()
+            swid_builder.patch         = GetValueFromSec(ini, section, 'patch').lower()
+            swid_builder.supplemental  = GetValueFromSec(ini, section, 'supplemental').lower()
             swid_builder.tagVersion    = GetValueFromSec(ini, section, 'tagversion')
             swid_builder.versionScheme = GetValueFromSec(ini, section, 'versionscheme')
         elif section.startswith('Entity'):
             Entity = copy.deepcopy(EntityBuilder)
-            Entity['name']       = GetValueFromSec(ini, section, 'name')
-            Entity['regid']      = GetValueFromSec(ini, section, 'regid')
-            Entity['role']       = GetValueFromSec(ini, section, 'role').split(' ')
-            Entity['thumbprint'] = GetValueFromSec(ini, section, 'thumbprint')
+            for Attribute in EntityBuilder.keys():
+                Entity[Attribute] = GetValueFromSec(ini, section, Attribute)
             swid_builder.addEntity(Entity)
-        elif section == 'Link':
+        elif section.startswith('Link'):
             Link = copy.deepcopy(LinkBuilder)
-            Link['rel']       = GetValueFromSec(ini, section, 'rel')
-            Link['href']      = GetValueFromSec(ini, section, 'href')
-            Link['use']       = GetValueFromSec(ini, section, 'use')
-            Link['media']     = GetValueFromSec(ini, section, 'media')
-            Link['type']      = GetValueFromSec(ini, section, 'type')
-            Link['artifact']  = GetValueFromSec(ini, section, 'artifact')
-            Link['ownership'] = GetValueFromSec(ini, section, 'ownership')
+            for Attribute in LinkBuilder.keys():
+                Link[Attribute] = GetValueFromSec(ini, section, Attribute)
             swid_builder.addLink(Link)
-        elif section == 'Meta':
+        elif section.startswith('Meta'):
             Meta = copy.deepcopy(MetaBuilder)
-            Meta['activationStatus']        = GetValueFromSec(ini, section, 'activationstatus')
-            Meta['channelType']             = GetValueFromSec(ini, section, 'channeltype')
-            Meta['colloquialVersion']       = GetValueFromSec(ini, section, 'colloquilversion')
-            Meta['description']             = GetValueFromSec(ini, section, 'description')
-            Meta['edition']                 = GetValueFromSec(ini, section, 'edition')
-            Meta['entitlementDataRequired'] = GetValueFromSec(ini, section, 'entitlementdatarequired')
-            Meta['entitlementKey']          = GetValueFromSec(ini, section, 'entitlementkey')
-            Meta['generator']               = GetValueFromSec(ini, section, 'generator')
-            Meta['persistentId']            = GetValueFromSec(ini, section, 'persistentid')
-            Meta['productBaseName']         = GetValueFromSec(ini, section, 'productbasename')
-            Meta['productFamily']           = GetValueFromSec(ini, section, 'productfamily')
-            Meta['revision']                = GetValueFromSec(ini, section, 'revision')
-            Meta['summary']                 = GetValueFromSec(ini, section, 'summary')
-            Meta['unspscCode']              = GetValueFromSec(ini, section, 'unspsccode')
-            Meta['unspscVersion']           = GetValueFromSec(ini, section, 'unspscversion')
+            for Attribute in MetaBuilder.keys():
+                Meta[Attribute] = GetValueFromSec(ini, section, Attribute)
             swid_builder.addMeta(Meta)
 
-    payload = genFileBuilder(PayloadFile, HashTypes)
+    payload = genPayloadBuilder(PayloadFile, HashTypes)
     swid_builder.addPayload(payload)
 
     return swid_builder
 
-def genFileBuilder(FileName, HashAlgorithms):
-    if not os.path.exists(FileName):
-        raise Exception("{} is not exists.".format(FileName))
+def genPayloadBuilder(FileName, HashAlgorithm):
+    ToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
+    CmdList = ['python', ToolPath, 'hash', '-f', FileName]
 
-    with open(FileName, 'rb') as f:
-        content = f.read()
+    try:
+        parseFspImage = subprocess.Popen(CmdList, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+        msg = parseFspImage.communicate()
+    except Exception:
+        print(msg[1])
 
-    fb = copy.deepcopy(FileBuilder)
-    fb['name'] = FileName
-    fb['size'] = os.path.getsize(FileName)
-    fb['version'] = None
-    for HashAlgorithm in HashAlgorithms:
-        if HashAlgorithm == 'SHA_256':
-            fb[HashAlgorithm] = hashlib.sha256(content).hexdigest()
-        elif HashAlgorithm == 'SHA_384':
-            fb[HashAlgorithm] = hashlib.sha384(content).hexdigest()
-        elif HashAlgorithm == 'SHA_512':
-            fb[HashAlgorithm] = hashlib.sha512(content).hexdigest()
-        elif HashAlgorithm == 'SHA_3_256':
-            fb[HashAlgorithm] = hashlib.sha3_256(content).hexdigest()
-        elif HashAlgorithm == 'SHA_3_384':
-            fb[HashAlgorithm] = hashlib.sha3_384(content).hexdigest()
-        elif HashAlgorithm == 'SHA_3_512':
-            fb[HashAlgorithm] = hashlib.sha3_512(content).hexdigest()
+    FSPComponents = msg[0].decode().split('\r\n')
 
-    return fb
+    db = copy.deepcopy(DirectoryBuilder)
+    db['name'] = 'FSP binary'
+    db['location'] = os.path.relpath(FileName)
+
+    for comp in FSPComponents:
+        if comp != '':
+            fb = copy.deepcopy(FileBuilder)
+            fb['name'] = comp.split(' ')[0]
+            fb['size'] = comp.split(' ')[1]
+            fb[HashAlgorithm] = comp.split(' ')[2]
+            db['file'].append(fb)
+
+    return db
 
 def SignXmlFile(XmlPath, KeyPath, CertPath, SignedXmlPath):
     with open(XmlPath, 'rb') as f:
@@ -308,7 +303,7 @@ def SignXmlFile(XmlPath, KeyPath, CertPath, SignedXmlPath):
 
     etree.ElementTree(signed_root).write(SignedXmlPath)
 
-def VerifySianXmlFile(SignedXmlPath, CertPath):
+def VerifySignXmlFile(SignedXmlPath, CertPath):
     with open(CertPath, 'r') as f:
         cert = f.read()
 
@@ -316,7 +311,7 @@ def VerifySianXmlFile(SignedXmlPath, CertPath):
         SignedXmlData = etree.fromstring(f.read())
 
     # Verify signature
-    verify_data = XMLVerifier().verify(SignedXmlData, x509_cert=cert).signed_xml
+    XMLVerifier().verify(SignedXmlData, x509_cert=cert).signed_xml
 
     print("Signature verification passed")
 
@@ -327,7 +322,7 @@ if __name__ == "__main__":
     parser_genswid = subparsers.add_parser('genswid', help='Generate Swid format file')
     parser_genswid.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
     parser_genswid.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
-    parser_genswid.add_argument('-t', '--hash', dest='HashType', action='append', type=str, choices=SupportHashAlgorithmList, help="Hash types {}".format(str(HashAlgorithmMap.keys())), required=True)
+    parser_genswid.add_argument('-t', '--hash', dest='HashType', type=str, choices=SupportHashAlgorithmList, help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
     parser_genswid.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Swid file path', default='', required=True)
 
     parser_sign = subparsers.add_parser('sign', help='Signed xml file')
@@ -370,4 +365,4 @@ if __name__ == "__main__":
         if not os.path.exists(args.Cert):
             raise Exception("ERROR: Could not locate cert file '%s' !" % args.Cert)
 
-        VerifySianXmlFile(args.SignedXmlPath, args.Cert)
+        VerifySignXmlFile(args.SignedXmlPath, args.Cert)

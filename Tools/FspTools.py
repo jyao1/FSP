@@ -888,12 +888,24 @@ def HashFspBin (FspBinary):
         CfgRegionSize = fsp.Fih.CfgRegionSize
 
         fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
-        UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
-        fspData = fspData.replace(UDP_Data, b"")
 
         hash_out = hashlib.sha256(fspData).hexdigest()
-        print ("FSP_%s SHA: %s" % (fsp.Type, hash_out))
+        print ("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
         FspAddr += ImageSize
+
+    # hash without udp
+    # for fsp in fd.FspList:
+    #     ImageSize = fsp.Fih.ImageSize
+    #     CfgRegionOffset = fsp.Fih.CfgRegionOffset
+    #     CfgRegionSize = fsp.Fih.CfgRegionSize
+    #
+    #     fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
+    #     UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
+    #     fspData = fspData.replace(UDP_Data, b"")
+    #
+    #     hash_out = hashlib.sha256(fspData).hexdigest()
+    #     print ("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
+    #     FspAddr += ImageSize
 
 def GenFspManifest (FspBinary, SvnNum, OutputDir, OutputFile):
     fd = FirmwareDevice(0, FspBinary)
