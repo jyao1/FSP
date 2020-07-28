@@ -30,8 +30,8 @@ import os
 import copy
 import cbor
 import json
-import hashlib
 import argparse
+import subprocess
 import configparser
 from jose import jws
 from ecdsa.keys import SigningKey, VerifyingKey
@@ -51,13 +51,15 @@ RelMap = {'ancestor': 1, 'component': 2, 'feature': 3, 'installationmedia': 4, '
 
 EntityBuilder = {'name': None, 'role': [], 'regid': None, 'thumbprint': None}
 LinkBuilder = {'artifact': None, 'href': None, 'media': None, 'ownership': None, 'rel': None, 'type': None, 'use': None}
-MetaBuilder = {'activationStatus': None, 'channelType': None, 'colloquialVersion': None, 'description': None, 'edition': None, 'entitlementDataRequired': None,
-               'entitlementKey': None, 'generator': None, 'persistentId': None, 'productBaseName': None, 'productFamily': None, 'revision': None, 'summary': None,
-               'unspscCode': None, 'unspscVersion': None}
-FileBuilder = {'name': '', 'size': '', 'version': '', 'hash': {}}
-EvidenceBuilder = {'date': '', 'deviceId': '', }
+MetaBuilder = {'colloquialVersion': None, 'edition': None, 'product': None, 'revision': None}
+DirectoryBuilder = {'name': None, 'location': None, 'file': []}
+FileBuilder = {'name': None, 'size': None, 'version': None}
+ReferenceMeasurementBuilder = {'PayloadType': None, 'PlatformManufacturerStr': None, 'PlatformManufacturerId': None,
+                               'PlatformModel': None, 'PlatformVersion': None, 'FirmwareManufacturerStr': None,
+                               'FirmwareManufacturerId': None, 'FirmwareMode': None, 'FirmwareVersion': None, 'BindingSpec': None,
+                               'BindingSpecVersion': None, 'pcURIlocal': None, 'pcURIGlobal': None, 'RIMLinkHash': None}
 
-mapDict = {"tag-id": 0, "swid-name": 1, "entity": 2, "evidence": 3, "link": 4, "software-meta": 5, "payload": 6,
+mapDict = {"tag-id": 0, "software-name": 1, "entity": 2, "evidence": 3, "link": 4, "software-meta": 5, "payload": 6,
            "hash": 7, "corpus": 8, "patch": 9, "media": 10, "supplemental": 11, "tag-version": 12, "software-version": 13,
             "version-scheme": 14, "lang": 15, "directory": 16, "file": 17, "process": 18, "resource": 19, "size": 20,
             "file-version": 21, "key": 22, "location": 23, "fs-name": 24, "root": 25, "path-elements": 26, "process-name": 27,
@@ -65,26 +67,34 @@ mapDict = {"tag-id": 0, "swid-name": 1, "entity": 2, "evidence": 3, "link": 4, "
             "artifact": 37, "href": 38, "ownership": 39, "rel": 40, "media-type": 41, "use": 42, "activation-status": 43,
             "channel-type": 44, "colloquial-version": 45, "description": 46, "edition": 47, "entitlement-data-required": 48,
             "entitlement-key": 49, "generator": 50, "persistent-id": 51, "product": 52, "product-family": 53, "revision": 54,
-            "summary": 55, "unspsc-code": 56, "unspsc-version": 57}
+            "summary": 55, "unspsc-code": 56, "unspsc-version": 57, "reference-measurement": 58, "payload-type": 59, "payload-rim":60,
+            "platform-configuration-uri-global": 61, "platform-configuration-uri-local": 62, "binding-spec-name": 63,
+            "binding-spec-version": 64, "platform-manufacturer-id": 65, "platform-manufacturer-name": 66, "platform-model-name": 67,
+            "platform-version": 68, "firmware-manufacturer-id": 69, "firmware-manufacturer-name": 70, "firmware-model-name": 71,
+            "firmware-version": 72, "rim-link-hash": 73, "support-rim-type-kramdown": 74, "support-rim-format": 75, "support-rim-uri-global": 76,
+            "rim-reference": 77, "boot-events": 78, "boot-event-number": 79, "boot-event-type": 80, "boot-digest-list": 81, "boot-event-data": 82}
 
-SupportHashAlgorithmList = ["SHA_256", "SHA_384", "SHA_512", "SHA_3_256", "SHA_3_384", "SHA_3_512"]
-# SignSupportAlgorithmList = ["ES256", "ES384", "ES512", "HS256/64", "HS256", "HS384", "HS512", "EdDSA", "AES-MAC128/64",\
-#                             "AES-MAC256/64", "AES-MAC128/128", "AES-MAC256/128", "A128GCM", "A192GCM", "A256GCM"]
+PayloadTypeMap = {"direct": 0, "indirect": 1, "hybriid": 2}
+SupportHashAlgorithmMap = {"SHA_256": 1, "SHA_384": 7, "SHA_512": 8, "SHA_3_256": 10, "SHA_3_384": 11, "SHA_3_512": 12}
 SignSupportAlgorithmList = ["ES256", "ES384", "ES512"]
 
 class SWIDBuilder:
     def __init__(self):
-        self.tagType = 0
         self.name = None
         self.tagId = None
         self.tagVersion = None
         self.version = None
+        self.corpus = None
+        self.patch = None
+        self.supplemental = None
         self.versionScheme = None
+        self.media = None
         self.entities = []
         self.evidence = []
         self.links = []
         self.metas = []
         self.payload = []
+        self.ReferenceMeasurement = []
 
     def addEntity(self, entity):
         self.entities.append(entity)
@@ -98,74 +108,103 @@ class SWIDBuilder:
     def addPayload(self, payload):
         self.payload.append(payload)
 
+    def addReferenceMeasurement(self, ReferenceMeasurement):
+        self.ReferenceMeasurement.append(ReferenceMeasurement)
+
 class GenCbor():
-    def __init__(self, OutputFile, SWIDBuilder):
+    def __init__(self, OutputFile, SWIDBuilder, HashType):
         self.CborPath = OutputFile
         self.CborData = {}
         self.SWIDBuilder = SWIDBuilder
+        self.HashType = HashType
+        self.MetaAttNonEmptyList = ['colloquialVersion', 'edition', 'product', 'revision']
+        self.ReferenceMeasurementAttNonEmptyList = ['BindingSpec', 'BindingSpecVersion', 'PlatformManufacturerStr', 'PlatformManufacturerId',
+                                                    'PlatformModel', 'RIMLinkHash']
 
     def buildAttribute(self, dict, tag, value):
         if value != None:
             dict[tag] = value
 
     def validateNonEmpty(self, tagName, value):
-        if value == None or value == []:
-            raise Exception("the field {} must contain a non-empty value".format(tagName))
+        if value == None or value == [] or value == '':
+            raise Exception("The field {} must contain a non-empty value".format(tagName))
 
     def validateEntity(self, entity):
         self.validateNonEmpty('name', entity['name'])
         self.validateNonEmpty('role', entity['role'])
+        self.validateNonEmpty('thumbprint', entity['thumbprint'])
 
     def validateLink(self, link):
         self.validateNonEmpty('href', link['href'])
         self.validateNonEmpty('rel', link['rel'])
 
-    def validatePayload(self, payload):
-        self.validateNonEmpty('name', payload['name'])
+    def validateMeta(self, meta):
+        for AttributeName in self.MetaAttNonEmptyList:
+            self.validateNonEmpty(AttributeName, meta[AttributeName])
+
+    def validateReferenceMeasurement(self, ReferenceMeasurement):
+        for AttributeName in self.ReferenceMeasurementAttNonEmptyList:
+            self.validateNonEmpty(AttributeName, ReferenceMeasurement[AttributeName])
 
     def validate(self):
         self.validateNonEmpty('name', self.SWIDBuilder.name)
+        self.validateNonEmpty('version', self.SWIDBuilder.tagId)
         self.validateNonEmpty('tagId', self.SWIDBuilder.tagId)
+        self.validateNonEmpty('tagVersion', self.SWIDBuilder.tagVersion)
         self.validateNonEmpty('entity', self.SWIDBuilder.entities)
+        self.validateNonEmpty('meta', self.SWIDBuilder.metas)
+        self.validateNonEmpty('ReferenceMeasurement', self.SWIDBuilder.ReferenceMeasurement)
 
         foundTagCreator = False
         for entity in self.SWIDBuilder.entities:
             self.validateEntity(entity)
+            for role in entity['role'].split(' '):
+                if role not in RoleMap.keys():
+                    raise Exception('Role "{}" should be one in [{}].'.format(role, ' '.join(RoleMap.keys())))
             if 'tagCreator' in entity['role']:
                 foundTagCreator = True
 
         if not foundTagCreator:
             raise Exception('at least one entity with role, tagCreator must be provided.')
 
-        if self.SWIDBuilder.payload != [] and self.SWIDBuilder.evidence != []:
-            raise Exception('Only one of evidence or payload must be provided.')
-
-        if self.SWIDBuilder.payload != []:
-            self.validatePayload(self.SWIDBuilder.payload[0])
-
         for link in self.SWIDBuilder.links:
             self.validateLink(link)
 
+        for meta in self.SWIDBuilder.metas:
+            self.validateMeta(meta)
+
+        for ReferenceMeasurement in self.SWIDBuilder.ReferenceMeasurement:
+            self.validateReferenceMeasurement(ReferenceMeasurement)
+
     def genCobor(self):
         self.validate()
-        # required attributes
+        # Required
         self.CborData[mapDict['tag-id']] = self.SWIDBuilder.tagId
         self.CborData[mapDict['tag-version']] = int(self.SWIDBuilder.tagVersion)
-        self.CborData[mapDict['swid-name']] = self.SWIDBuilder.name
+        self.CborData[mapDict['software-name']] = self.SWIDBuilder.name
+        self.CborData[mapDict['software-version']] = self.SWIDBuilder.version
 
-        if self.SWIDBuilder.version != None:
-            self.CborData[mapDict['software-version']] = self.SWIDBuilder.version
+        # Optional
+        if self.SWIDBuilder.corpus != None:
+            self.CborData[mapDict['corpus']] = ConvertStrToBool(self.SWIDBuilder.corpus)
+        if self.SWIDBuilder.patch != None:
+            self.CborData[mapDict['patch']] = ConvertStrToBool(self.SWIDBuilder.patch)
+        if self.SWIDBuilder.supplemental != None:
+            self.CborData[mapDict['supplemental']] = ConvertStrToBool(self.SWIDBuilder.supplemental)
         if self.SWIDBuilder.versionScheme != None:
             self.CborData[mapDict['version-scheme']] = VersionSchemeMap[self.SWIDBuilder.versionScheme]
+        if self.SWIDBuilder.media != None:
+            self.CborData[mapDict['media']] = VersionSchemeMap[self.SWIDBuilder.media]
 
-        # Optional attribute
-        if self.SWIDBuilder.tagType == 'primary':
-            pass
-        elif self.SWIDBuilder.tagType not in TagTypeList:
-            print("TagType: {} is illegal".format(self.SWIDBuilder.tagType))
-            os._exit()
-        else:
-            self.CborData[mapDict[self.SWIDBuilder.tagType]] = True
+        if self.SWIDBuilder.metas != []:
+            self.CborData[mapDict['software-meta']] = []
+            for meta in self.SWIDBuilder.metas:
+                meta_dict = {}
+                meta_dict[mapDict['colloquial-version']] = meta['colloquialVersion']
+                meta_dict[mapDict['edition']] = meta['edition']
+                meta_dict[mapDict['product']] = meta['product']
+                meta_dict[mapDict['revision']] = meta['revision']
+                self.CborData[mapDict['software-meta']].append(meta_dict)
 
         # child elements
         # Required
@@ -173,19 +212,21 @@ class GenCbor():
             self.CborData[mapDict['entity']] = []
             for entity in self.SWIDBuilder.entities:
                 entity_dict = {}
-                # required
                 entity_dict[mapDict['entity-name']] = entity['name']
                 entity_dict[mapDict['role']] = []
-                for role in entity['role']:
+                for role in entity['role'].split(' '):
                     entity_dict[mapDict['role']].append(RoleMap[role])
+                entity_dict[mapDict['thumbprint']] = []
+                # hash-alg-id
+                entity_dict[mapDict['thumbprint']].append(HashAlgorithmMap[self.HashType])
+                # hash-value
+                entity_dict[mapDict['thumbprint']].append(entity['thumbprint'])
                 # optional
                 if entity['regid'] != None:
                     entity_dict[mapDict['reg-id']] = entity['regid']
-                if entity['thumbprint'] != None:
-                    entity_dict[mapDict['thumbprint']] = entity['thumbprint']
+
                 self.CborData[mapDict['entity']].append(entity_dict)
 
-        # optional
         if self.SWIDBuilder.links != []:
             self.CborData[mapDict['link']] = []
             for link in self.SWIDBuilder.links:
@@ -193,47 +234,60 @@ class GenCbor():
                 # required
                 link_dict[mapDict['href']] = link['href']
                 link_dict[mapDict['rel']]  = RelMap[link['rel']]
-
-                # optional
-                self.buildAttribute(link_dict, mapDict['artifact'], link['artifact'])
-                self.buildAttribute(link_dict, mapDict['media'], link['media'])
-                self.buildAttribute(link_dict, mapDict['ownership'], OwnershipMap[link['ownership']])
-                self.buildAttribute(link_dict, mapDict['media-type'], link['type'])
-                self.buildAttribute(link_dict, mapDict['use'], UseMap[link['use']])
                 self.CborData[mapDict['link']].append(link_dict)
 
-        if self.SWIDBuilder.metas != []:
-            self.CborData[mapDict['software-meta']] = []
-            for meta in self.SWIDBuilder.metas:
-                meta_dict = {}
-                self.buildAttribute(meta_dict, mapDict['activation-status'], meta['activationStatus'])
-                self.buildAttribute(meta_dict, mapDict['channel-type'], meta['channelType'])
-                self.buildAttribute(meta_dict, mapDict['colloquial-version'], meta['colloquialVersion'])
-                self.buildAttribute(meta_dict, mapDict['description'], meta['description'])
-                self.buildAttribute(meta_dict, mapDict['edition'], meta['edition'])
-                self.buildAttribute(meta_dict, mapDict['entitlement-data-required'], meta['entitlementDataRequired'])
-                self.buildAttribute(meta_dict, mapDict['entitlement-key'], meta['entitlementKey'])
-                self.buildAttribute(meta_dict, mapDict['generator'], meta['generator'])
-                self.buildAttribute(meta_dict, mapDict['persistent-id'], meta['persistentId'])
-                self.buildAttribute(meta_dict, mapDict['product'], meta['productBaseName'])
-                self.buildAttribute(meta_dict, mapDict['product-family'], meta['productFamily'])
-                self.buildAttribute(meta_dict, mapDict['revision'], meta['revision'])
-                self.buildAttribute(meta_dict, mapDict['summary'], meta['summary'])
-                self.buildAttribute(meta_dict, mapDict['unspsc-code'], meta['unspscCode'])
-                self.buildAttribute(meta_dict, mapDict['unspsc-version'], meta['unspscVersion'])
-                self.CborData[mapDict['software-meta']].append(meta_dict)
-
+        PayloadData = self.SWIDBuilder.payload[0]
+        self.CborData[mapDict['path-elements']] = {}
         if self.SWIDBuilder.payload != []:
             self.CborData[mapDict['payload']] = {}
-            self.CborData[mapDict['payload']][mapDict['file']] = {}
-            self.CborData[mapDict['payload']][mapDict['file']][mapDict['fs-name']] = str(self.SWIDBuilder.payload[0]['name'])
-            self.CborData[mapDict['payload']][mapDict['file']][mapDict['size']] = self.SWIDBuilder.payload[0]['size']
-            self.CborData[mapDict['payload']][mapDict['file']][mapDict['hash']] = []
-            for hashType in self.SWIDBuilder.payload[0]['hash'].keys():
-                self.CborData[mapDict['payload']][mapDict['file']][mapDict['hash']].append([HashAlgorithmMap[hashType.replace('-', '_')], str(self.SWIDBuilder.payload[0]['hash'][hashType])])
+            self.CborData[mapDict['payload']][mapDict['directory']] = {}
+            self.CborData[mapDict['payload']][mapDict['directory']][mapDict['fs-name']] = PayloadData['name']
+            self.CborData[mapDict['payload']][mapDict['directory']][mapDict['location']] = PayloadData['location']
+
+            self.CborData[mapDict['payload']][mapDict['directory']][mapDict['path-elements']] = {}
+            self.CborData[mapDict['payload']][mapDict['directory']][mapDict['path-elements']][mapDict['file']] = []
+            for file in PayloadData['file']:
+                FileElement = {}
+                FileElement[mapDict['fs-name']] = file['name']
+                FileElement[mapDict['size']] = file['size']
+                FileElement[mapDict['hash']] = []
+                FileElement[mapDict['hash']].append(HashAlgorithmMap[self.HashType])
+                FileElement[mapDict['hash']].append(file[self.HashType])
+                self.CborData[mapDict['payload']][mapDict['directory']][mapDict['path-elements']][mapDict['file']].append(FileElement)
+
+        ReferenceMeasurement = self.SWIDBuilder.ReferenceMeasurement[0]
+        if self.SWIDBuilder.ReferenceMeasurement != []:
+            self.CborData[mapDict['reference-measurement']] = {}
+            self.CborData[mapDict['reference-measurement']][mapDict['payload-type']] = PayloadTypeMap[ReferenceMeasurement['PayloadType'].lower()]
+            self.CborData[mapDict['reference-measurement']][mapDict['platform-configuration-uri-global']] = ReferenceMeasurement['pcURIGlobal']
+            self.CborData[mapDict['reference-measurement']][mapDict['platform-configuration-uri-local']] = ReferenceMeasurement['pcURIlocal']
+            self.CborData[mapDict['reference-measurement']][mapDict['binding-spec-name']] = ReferenceMeasurement['BindingSpec']
+            self.CborData[mapDict['reference-measurement']][mapDict['binding-spec-version']] = ReferenceMeasurement['BindingSpecVersion']
+            self.CborData[mapDict['reference-measurement']][mapDict['platform-manufacturer-id']] = ReferenceMeasurement['PlatformManufacturerId']
+            self.CborData[mapDict['reference-measurement']][mapDict['platform-manufacturer-name']] = ReferenceMeasurement['PlatformManufacturerStr']
+            self.CborData[mapDict['reference-measurement']][mapDict['platform-model-name']] = ReferenceMeasurement['PlatformModel']
+            self.CborData[mapDict['reference-measurement']][mapDict['platform-version']] = ReferenceMeasurement['PlatformVersion']
+            self.CborData[mapDict['reference-measurement']][mapDict['firmware-manufacturer-id']] = ReferenceMeasurement['FirmwareManufacturerId']
+            self.CborData[mapDict['reference-measurement']][mapDict['firmware-manufacturer-name']] = ReferenceMeasurement['FirmwareManufacturerStr']
+            self.CborData[mapDict['reference-measurement']][mapDict['firmware-model-name']] = ReferenceMeasurement['FirmwareMode']
+            self.CborData[mapDict['reference-measurement']][mapDict['firmware-version']] = ReferenceMeasurement['FirmwareVersion']
+            self.CborData[mapDict['reference-measurement']][mapDict['rim-link-hash']] = []
+            self.CborData[mapDict['reference-measurement']][mapDict['rim-link-hash']].append(HashAlgorithmMap[self.HashType])
+            self.CborData[mapDict['reference-measurement']][mapDict['rim-link-hash']].append(ReferenceMeasurement['RIMLinkHash'])
+
 
         with open(self.CborPath, 'wb') as f:
             f.write(cbor.dumps(self.CborData))
+
+        print(json.dumps(self.CborData, sort_keys=True, indent=2))
+
+def ConvertStrToBool(str):
+    if str.lower() == 'true':
+        return True
+    elif str.lower() == 'false':
+        return False
+    else:
+        raise Exception('Value should be "True" or "False".')
 
 def GetValueFromSec(ini_obj, section, option):
     if ini_obj.has_option(section, option):
@@ -250,79 +304,65 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
 
     for section in sections:
         if section == 'SoftwareIdentity':
-            swid_builder.name          = GetValueFromSec(ini, section, 'name')
-            swid_builder.tagId         = GetValueFromSec(ini, section, 'tagid')
-            swid_builder.version       = GetValueFromSec(ini, section, 'version')
-            swid_builder.tagType       = GetValueFromSec(ini, section, 'tagtype')
-            swid_builder.tagVersion    = GetValueFromSec(ini, section, 'tagversion')
+            swid_builder.name = GetValueFromSec(ini, section, 'name')
+            swid_builder.tagId = GetValueFromSec(ini, section, 'tagid')
+            swid_builder.version = GetValueFromSec(ini, section, 'version')
+            swid_builder.corpus = GetValueFromSec(ini, section, 'corpus').lower()
+            swid_builder.patch = GetValueFromSec(ini, section, 'patch').lower()
+            swid_builder.supplemental = GetValueFromSec(ini, section, 'supplemental').lower()
+            swid_builder.tagVersion = GetValueFromSec(ini, section, 'tagversion')
             swid_builder.versionScheme = GetValueFromSec(ini, section, 'versionscheme')
         elif section.startswith('Entity'):
             Entity = copy.deepcopy(EntityBuilder)
-            Entity['name']       = GetValueFromSec(ini, section, 'name')
-            Entity['regid']      = GetValueFromSec(ini, section, 'regid')
-            Entity['role']       = GetValueFromSec(ini, section, 'role').split(' ')
-            Entity['thumbprint'] = GetValueFromSec(ini, section, 'thumbprint')
+            for Attribute in EntityBuilder.keys():
+                Entity[Attribute] = GetValueFromSec(ini, section, Attribute)
             swid_builder.addEntity(Entity)
-        elif section == 'Link':
+        elif section.startswith('Link'):
             Link = copy.deepcopy(LinkBuilder)
-            Link['rel']       = GetValueFromSec(ini, section, 'rel')
-            Link['href']      = GetValueFromSec(ini, section, 'href')
-            Link['use']       = GetValueFromSec(ini, section, 'use')
-            Link['media']     = GetValueFromSec(ini, section, 'media')
-            Link['type']      = GetValueFromSec(ini, section, 'type')
-            Link['artifact']  = GetValueFromSec(ini, section, 'artifact')
-            Link['ownership'] = GetValueFromSec(ini, section, 'ownership')
+            for Attribute in LinkBuilder.keys():
+                Link[Attribute] = GetValueFromSec(ini, section, Attribute)
             swid_builder.addLink(Link)
-        elif section == 'Meta':
+        elif section.startswith('Meta'):
             Meta = copy.deepcopy(MetaBuilder)
-            Meta['activationStatus']        = GetValueFromSec(ini, section, 'activationstatus')
-            Meta['channelType']             = GetValueFromSec(ini, section, 'channeltype')
-            Meta['colloquialVersion']       = GetValueFromSec(ini, section, 'colloquilversion')
-            Meta['description']             = GetValueFromSec(ini, section, 'description')
-            Meta['edition']                 = GetValueFromSec(ini, section, 'edition')
-            Meta['entitlementDataRequired'] = GetValueFromSec(ini, section, 'entitlementdatarequired')
-            Meta['entitlementKey']          = GetValueFromSec(ini, section, 'entitlementkey')
-            Meta['generator']               = GetValueFromSec(ini, section, 'generator')
-            Meta['persistentId']            = GetValueFromSec(ini, section, 'persistentid')
-            Meta['productBaseName']         = GetValueFromSec(ini, section, 'productbasename')
-            Meta['productFamily']           = GetValueFromSec(ini, section, 'productfamily')
-            Meta['revision']                = GetValueFromSec(ini, section, 'revision')
-            Meta['summary']                 = GetValueFromSec(ini, section, 'summary')
-            Meta['unspscCode']              = GetValueFromSec(ini, section, 'unspsccode')
-            Meta['unspscVersion']           = GetValueFromSec(ini, section, 'unspscversion')
+            ReferenceMeasurement = copy.deepcopy(ReferenceMeasurementBuilder)
+            for Attribute in MetaBuilder.keys():
+                Meta[Attribute] = GetValueFromSec(ini, section, Attribute)
+            for Attribute in ReferenceMeasurementBuilder.keys():
+                ReferenceMeasurement[Attribute] = GetValueFromSec(ini, section, Attribute.lower())
             swid_builder.addMeta(Meta)
+            swid_builder.addReferenceMeasurement(ReferenceMeasurement)
 
-    payload = genFileBuilder(PayloadFile, HashTypes)
+    payload = genPayloadBuilder(PayloadFile, HashTypes)
     swid_builder.addPayload(payload)
 
     return swid_builder
 
-def genFileBuilder(FileName, HashAlgorithms):
-    if not os.path.exists(FileName):
-        raise Exception("{} is not exists.".format(FileName))
+def genPayloadBuilder(FileName, HashAlgorithm):
+    ToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
+    CmdList = ['python', ToolPath, 'hash', '-f', FileName]
 
-    with open(FileName, 'rb') as f:
-        content = f.read()
+    try:
+        parseFspImage = subprocess.Popen(CmdList, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         shell=False)
+        msg = parseFspImage.communicate()
+    except Exception:
+        print(msg[1])
 
-    fb = copy.deepcopy(FileBuilder)
-    fb['name'] = FileName
-    fb['size'] = os.path.getsize(FileName)
-    fb['version'] = None
-    for HashAlgorithm in HashAlgorithms:
-        if HashAlgorithm == 'SHA_256':
-            fb['hash']['SHA-256'] = hashlib.sha256(content).hexdigest()
-        elif HashAlgorithm == 'SHA_384':
-            fb['hash']['SHA-384'] = hashlib.sha384(content).hexdigest()
-        elif HashAlgorithm == 'SHA_512':
-            fb['hash']['SHA-512'] = hashlib.sha512(content).hexdigest()
-        elif HashAlgorithm == 'SHA_3_256':
-            fb['hash']['SHA-3-256'] = hashlib.sha3_256(content).hexdigest()
-        elif HashAlgorithm == 'SHA_3_384':
-            fb['hash']['SHA-3-384'] = hashlib.sha3_384(content).hexdigest()
-        elif HashAlgorithm == 'SHA_3_512':
-            fb['hash']['SHA-3-512'] = hashlib.sha3_512(content).hexdigest()
+    FSPComponents = msg[0].decode().split('\r\n')
 
-    return fb
+    db = copy.deepcopy(DirectoryBuilder)
+    db['name'] = 'FSP binary'
+    db['location'] = os.path.relpath(FileName)
+
+    for comp in FSPComponents:
+        if comp != '':
+            fb = copy.deepcopy(FileBuilder)
+            fb['name'] = comp.split(' ')[0]
+            fb['size'] = comp.split(' ')[1]
+            fb[HashAlgorithm] = comp.split(' ')[2]
+            db['file'].append(fb)
+
+    return db
 
 def GetKeyByValue(dict, value):
     for key in dict.keys():
@@ -344,7 +384,7 @@ def DecodeCbor(FilePath, Translate):
         content = f.read()
 
     cborDict = cbor.loads(content)
-   
+
     if Translate:
         decodeCborData = {}
         for key in cborDict.keys():
@@ -481,6 +521,8 @@ def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
     with open(SignedCborPath, 'wb') as f:
         f.write(cbor.dumps(cbor.loads(sign_msg.encode())))
 
+    print(cbor.dumps(cbor.loads(sign_msg.encode())))
+
 def VerifySignedCbor(FilePath, Key, Algorithm):
     with open(FilePath, 'rb') as f:
         cose_msg = CoseMessage.decode(f.read())
@@ -528,7 +570,7 @@ if __name__ == "__main__":
     parser_encode.set_defaults(which='encode')
     parser_encode.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
     parser_encode.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
-    parser_encode.add_argument('-t', '--hash', dest='HashType', action='append', type=str, choices=SupportHashAlgorithmList, help="Hash types {}".format(str(HashAlgorithmMap.keys())), required=True)
+    parser_encode.add_argument('-t', '--hash', dest='HashType',  type=str, choices=SupportHashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
     parser_encode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Cbor file path', default='', required=True)
 
     parser_decode = subparsers.add_parser('decode', help='Decode cbor format file')
@@ -579,7 +621,7 @@ if __name__ == "__main__":
             raise Exception("ERROR: Could not locate file '%s' !" % args.File)
 
     if args.which == 'encode':
-        Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType))
+        Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType), args.HashType)
         Encode.genCobor()
     elif args.which == 'decode':
         if args.JWT:
