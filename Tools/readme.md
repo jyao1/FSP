@@ -126,9 +126,13 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 ## Feature not implemented yet
 
-1) Support certificate chain
+1) RIMLinkHash
 
-2) CoSWID keyid
+2) thumbprint
+
+3) Support certificate chain
+
+4) CoSWID keyid
 
 ## Known limitation
 This package is only the sample code to show the concept.
