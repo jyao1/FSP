@@ -323,20 +323,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
 
-    parser_genswid = subparsers.add_parser('genswid', help='Generate Swid format file')
+    parser_genswid = subparsers.add_parser('genswid', help='Generate Swid format file in XML format')
     parser_genswid.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
     parser_genswid.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
     parser_genswid.add_argument('-t', '--hash', dest='HashType', type=str, choices=SupportHashAlgorithmList, help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
     parser_genswid.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Swid file path', default='', required=True)
 
-    parser_sign = subparsers.add_parser('sign', help='Signed xml file')
-    parser_sign.add_argument('-i', '--input', dest='XmlPath', type=str, help='Xml file path', required=True)
+    parser_sign = subparsers.add_parser('sign', help='Sign Swid XML file')
+    parser_sign.add_argument('-i', '--input', dest='XmlPath', type=str, help='Swid XML file path', required=True)
     parser_sign.add_argument('--privatekey', dest='PrivateKey', type=str, help='Private key for signing (PEM format)', required=True)
     parser_sign.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
     parser_sign.add_argument('-o', '--output', dest='SignedXmlPath', type=str, help='SignedXml file path', required=True)
 
-    parser_verify = subparsers.add_parser('verify', help='Signed xml file')
-    parser_verify.add_argument('-i', '--input', dest='SignedXmlPath', type=str, help='Signed Xml file path', required=True)
+    parser_verify = subparsers.add_parser('verify', help='Verify signature of signed Swid XML file')
+    parser_verify.add_argument('-i', '--input', dest='SignedXmlPath', type=str, help='Signed Swid XML file path', required=True)
     parser_verify.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
     args = parser.parse_args()
 

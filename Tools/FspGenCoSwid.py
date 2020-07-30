@@ -556,19 +556,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
 
-    parser_encode = subparsers.add_parser('encode', help='Encode cbor format file')
-    parser_encode.set_defaults(which='encode')
+    parser_encode = subparsers.add_parser('gencoswid', help='Generate CoSwid file in CBOR format')
+    parser_encode.set_defaults(which='gencoswid')
     parser_encode.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
     parser_encode.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
     parser_encode.add_argument('-t', '--hash', dest='HashType',  type=str, choices=SupportHashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
     parser_encode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Cbor file path', default='', required=True)
 
-    parser_decode = subparsers.add_parser('decode', help='Decode cbor format file')
-    parser_decode.set_defaults(which='decode')
+    parser_decode = subparsers.add_parser('dump', help='dump CoSwid CBOR file')
+    parser_decode.set_defaults(which='dump')
     parser_decode.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
     parser_decode.add_argument('--jwt', dest='JWT', action='store_true', help='Flag used to enable decode Json Web Token')
 
-    parser_sign = subparsers.add_parser('sign', help='Sign cbor file')
+    parser_sign = subparsers.add_parser('sign', help='Sign CoSwid CBOR file')
     parser_sign.set_defaults(which='sign')
     parser_sign.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
     parser_sign.add_argument('--key', dest='PrivateKey', type=str, help='Private key for signing', required=True)
@@ -576,7 +576,7 @@ if __name__ == "__main__":
     parser_sign.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to sign cbor')
     parser_sign.add_argument('-o', '--output', dest='SignedCborPath', type=str, help='SignedCbor file path COSE/JWS', required=True)
 
-    parser_verify = subparsers.add_parser('verify', help='Verify signature of signed data')
+    parser_verify = subparsers.add_parser('verify', help='Verify signature of signed CoSwid CBOR file')
     parser_verify.set_defaults(which='verify')
     parser_verify.add_argument('-f', '--file', dest='File', type=str, help='Signed file path', required=True)
     parser_verify.add_argument('--key', dest='PublicKey', type=str, help='Public key for signing', required=True)
@@ -585,7 +585,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.which == 'encode':
+    if args.which == 'gencoswid':
         if not os.path.exists(args.IniPath):
             raise Exception("ERROR: Could not locate Ini file '%s' !" % args.IniPath)
         if not os.path.exists(args.Payload):
@@ -594,7 +594,7 @@ if __name__ == "__main__":
             if not os.path.exists(os.path.dirname(args.OutputFile)):
                 os.makedirs(os.path.dirname(args.OutputFile))
 
-    if args.which == 'decode':
+    if args.which == 'dump':
         if not os.path.exists(args.File):
             raise Exception("ERROR: Could not locate Cbor file '%s' !" % args.File)
 
@@ -609,10 +609,10 @@ if __name__ == "__main__":
         if not os.path.exists(args.File):
             raise Exception("ERROR: Could not locate file '%s' !" % args.File)
 
-    if args.which == 'encode':
+    if args.which == 'gencoswid':
         Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType), args.HashType)
         Encode.genCobor()
-    elif args.which == 'decode':
+    elif args.which == 'dump':
         if args.JWT:
             DecodeJwt(args.File)
         else:
