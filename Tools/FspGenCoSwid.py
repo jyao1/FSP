@@ -384,7 +384,7 @@ def GetValueFromSec(ini_obj, section, option):
     else:
         return None
 
-def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
+def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes, Mode):
     swid_builder = SWIDBuilder()
 
     ini = configparser.ConfigParser()
@@ -421,14 +421,14 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
             swid_builder.addMeta(Meta)
             swid_builder.addReferenceMeasurement(ReferenceMeasurement)
 
-    payload = genPayloadBuilder(PayloadFile, HashTypes)
+    payload = genPayloadBuilder(PayloadFile, HashTypes, Mode)
     swid_builder.addPayload(payload)
 
     return swid_builder
 
-def genPayloadBuilder(FileName, HashAlgorithm):
+def genPayloadBuilder(FileName, HashAlgorithm, Mode):
     ToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
-    CmdList = ['python', ToolPath, 'hash', '-f', FileName]
+    CmdList = ['python', ToolPath, 'hash', '-f', FileName, '-m', Mode]
 
     try:
         parseFspImage = subprocess.Popen(CmdList, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -556,17 +556,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
 
-    parser_encode = subparsers.add_parser('gencoswid', help='Generate CoSwid file in CBOR format')
-    parser_encode.set_defaults(which='gencoswid')
-    parser_encode.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
-    parser_encode.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
-    parser_encode.add_argument('-t', '--hash', dest='HashType',  type=str, choices=SupportHashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
-    parser_encode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Cbor file path', default='', required=True)
+    parser_gencoswid = subparsers.add_parser('gencoswid', help='Generate CoSwid file in CBOR format')
+    parser_gencoswid .set_defaults(which='gencoswid')
+    parser_gencoswid .add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
+    parser_gencoswid .add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
+    parser_gencoswid.add_argument('-m', '--mode', choices=['binary', 'separation'], dest='Mode', type=str, help='Different mode to generate hash for FSP image', default='binary')
+    parser_gencoswid .add_argument('-t', '--hash', dest='HashType',  type=str, choices=SupportHashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
+    parser_gencoswid .add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Cbor file path', default='', required=True)
 
-    parser_decode = subparsers.add_parser('dump', help='dump CoSwid CBOR file')
-    parser_decode.set_defaults(which='dump')
-    parser_decode.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
-    parser_decode.add_argument('--jwt', dest='JWT', action='store_true', help='Flag used to enable decode Json Web Token')
+    parser_dump = subparsers.add_parser('dump', help='dump CoSwid CBOR file')
+    parser_dump.set_defaults(which='dump')
+    parser_dump.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
+    parser_dump.add_argument('--jwt', dest='JWT', action='store_true', help='Flag used to enable decode Json Web Token')
 
     parser_sign = subparsers.add_parser('sign', help='Sign CoSwid CBOR file')
     parser_sign.set_defaults(which='sign')
@@ -610,7 +611,7 @@ if __name__ == "__main__":
             raise Exception("ERROR: Could not locate file '%s' !" % args.File)
 
     if args.which == 'gencoswid':
-        Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType), args.HashType)
+        Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType, args.Mode), args.HashType)
         Encode.genCobor()
     elif args.which == 'dump':
         if args.JWT:

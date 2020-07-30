@@ -876,247 +876,246 @@ def RebaseFspBin (FspBinary, FspComponent, FspBase, OutputFile):
     fd.write(newfspbin)
     fd.close()
 
-def HashFspBin (FspBinary):
+def HashFspBin (FspBinary, Mode):
     fd = FirmwareDevice(0, FspBinary)
     fd.ParseFd()
     fd.ParseFsp()
 
     FspAddr = 0
-    for fsp in fd.FspList:
-        ImageSize = fsp.Fih.ImageSize
-        CfgRegionOffset = fsp.Fih.CfgRegionOffset
-        CfgRegionSize = fsp.Fih.CfgRegionSize
+    if Mode == 'binary':
+        for fsp in fd.FspList:
+            ImageSize = fsp.Fih.ImageSize
+            fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
 
-        fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
-
-        hash_out = hashlib.sha256(fspData).hexdigest()
-        print ("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
-        FspAddr += ImageSize
-
-    # hash without udp
-    # for fsp in fd.FspList:
-    #     ImageSize = fsp.Fih.ImageSize
-    #     CfgRegionOffset = fsp.Fih.CfgRegionOffset
-    #     CfgRegionSize = fsp.Fih.CfgRegionSize
-    #
-    #     fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
-    #     UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
-    #     fspData = fspData.replace(UDP_Data, b"")
-    #
-    #     hash_out = hashlib.sha256(fspData).hexdigest()
-    #     print ("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
-    #     FspAddr += ImageSize
-
-def GenFspManifest (FspBinary, SvnNum, OutputFile):
-    fd = FirmwareDevice(0, FspBinary)
-    fd.ParseFd()
-    fd.ParseFsp()
-
-    if OutputFile == '':
-        filename = os.path.basename(FspBinary)
-        base, ext  = os.path.splitext(filename)
-        OutputFile = base + "Manifest.bin"
-
-    fspname, ext = os.path.splitext(os.path.basename(OutputFile))
-    filename = fspname + ext
-
-    fspmanifestbin = bytearray([])
-    DigestSize = 64
-
-    # Component Manifest Additional Data
-    AddDataType = 1
-    AddDigestType = 0xB
-
-    AddDataType0 = 2
-
-    # Component Manifest
-    CompDataType = 0
-
-    # Manifest
-    ManifestSignature = b'_FM_'
-    ManifestSize = sizeof(c_uint32) + sizeof(c_uint32) + sizeof(c_uint8) + sizeof(c_uint24) + sizeof(c_uint32)
-    ManifestStructureVersion = 0x10
-    ManifestReservedData = 0x0
-    if SvnNum == '':
-        MainifestFspSvn = fd.FspList[0].Fih.ImageRevision
+            hash_out = hashlib.sha256(fspData).hexdigest()
+            print("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
+            FspAddr += ImageSize
     else:
-        MainifestFspSvn = eval(SvnNum)
+        for fsp in fd.FspList:
+            ImageSize = fsp.Fih.ImageSize
+            CfgRegionOffset = fsp.Fih.CfgRegionOffset
+            CfgRegionSize = fsp.Fih.CfgRegionSize
 
-    offset = 0
-    fspmanifestbin[offset:offset + sizeof(c_uint32)] = ManifestSignature
-    offset += sizeof(c_uint32)
-    ManifestSizeOffset = offset
-    fspmanifestbin[ManifestSizeOffset:ManifestSizeOffset + sizeof(c_uint32)] = Val2Bytes(0, sizeof(c_uint32))
-    offset += sizeof(c_uint32)
-    fspmanifestbin[offset:offset + sizeof(c_uint8)] = Val2Bytes(ManifestStructureVersion, sizeof(c_uint8))
-    offset += sizeof(c_uint8)
-    fspmanifestbin[offset:offset + sizeof(c_uint24)] = Val2Bytes(ManifestReservedData, sizeof(c_uint24))
-    offset += sizeof(c_uint24)
-    fspmanifestbin[offset:offset + sizeof(c_uint32)] = Val2Bytes(MainifestFspSvn, sizeof(c_uint32))
-    offset += sizeof(c_uint32)
+            fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
+            UDP_Data = fspData[CfgRegionOffset: (CfgRegionOffset + CfgRegionSize)]
+            fspData = fspData.replace(UDP_Data, b"")
 
-    FspAddr = 0
-    for fsp in fd.FspList:
-        ImageSize = fsp.Fih.ImageSize
-        CfgRegionOffset = fsp.Fih.CfgRegionOffset
-        CfgRegionSize = fsp.Fih.CfgRegionSize
+            code_hash_out = hashlib.sha256(fspData).hexdigest()
+            udp_hash_out = hashlib.sha256(UDP_Data).hexdigest()
+            print("FSP%s-Code %s %s" % (fsp.Type, len(fspData), code_hash_out))
+            print("FSP%s-Udp %s %s" % (fsp.Type, len(UDP_Data), udp_hash_out))
+            FspAddr += ImageSize
 
-        fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
-        AddFspInfoHeader = fd.FdData[FspAddr + fsp.FihOffset : (FspAddr + fsp.FihOffset + sizeof(FSP_INFORMATION_HEADER))]
-        UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
-        fspData = fspData.replace(UDP_Data, b"")
+# def GenFspManifest (FspBinary, SvnNum, OutputFile):
+#     fd = FirmwareDevice(0, FspBinary)
+#     fd.ParseFd()
+#     fd.ParseFsp()
+#
+#     if OutputFile == '':
+#         filename = os.path.basename(FspBinary)
+#         base, ext  = os.path.splitext(filename)
+#         OutputFile = base + "Manifest.bin"
+#
+#     fspname, ext = os.path.splitext(os.path.basename(OutputFile))
+#     filename = fspname + ext
+#
+#     fspmanifestbin = bytearray([])
+#     DigestSize = 64
+#
+#     # Component Manifest Additional Data
+#     AddDataType = 1
+#     AddDigestType = 0xB
+#
+#     AddDataType0 = 2
+#
+#     # Component Manifest
+#     CompDataType = 0
+#
+#     # Manifest
+#     ManifestSignature = b'_FM_'
+#     ManifestSize = sizeof(c_uint32) + sizeof(c_uint32) + sizeof(c_uint8) + sizeof(c_uint24) + sizeof(c_uint32)
+#     ManifestStructureVersion = 0x10
+#     ManifestReservedData = 0x0
+#     if SvnNum == '':
+#         MainifestFspSvn = fd.FspList[0].Fih.ImageRevision
+#     else:
+#         MainifestFspSvn = eval(SvnNum)
+#
+#     offset = 0
+#     fspmanifestbin[offset:offset + sizeof(c_uint32)] = ManifestSignature
+#     offset += sizeof(c_uint32)
+#     ManifestSizeOffset = offset
+#     fspmanifestbin[ManifestSizeOffset:ManifestSizeOffset + sizeof(c_uint32)] = Val2Bytes(0, sizeof(c_uint32))
+#     offset += sizeof(c_uint32)
+#     fspmanifestbin[offset:offset + sizeof(c_uint8)] = Val2Bytes(ManifestStructureVersion, sizeof(c_uint8))
+#     offset += sizeof(c_uint8)
+#     fspmanifestbin[offset:offset + sizeof(c_uint24)] = Val2Bytes(ManifestReservedData, sizeof(c_uint24))
+#     offset += sizeof(c_uint24)
+#     fspmanifestbin[offset:offset + sizeof(c_uint32)] = Val2Bytes(MainifestFspSvn, sizeof(c_uint32))
+#     offset += sizeof(c_uint32)
+#
+#     FspAddr = 0
+#     for fsp in fd.FspList:
+#         ImageSize = fsp.Fih.ImageSize
+#         CfgRegionOffset = fsp.Fih.CfgRegionOffset
+#         CfgRegionSize = fsp.Fih.CfgRegionSize
+#
+#         fspData = fd.FdData[FspAddr : (FspAddr + ImageSize)]
+#         AddFspInfoHeader = fd.FdData[FspAddr + fsp.FihOffset : (FspAddr + fsp.FihOffset + sizeof(FSP_INFORMATION_HEADER))]
+#         UDP_Data = fspData[CfgRegionOffset : (CfgRegionOffset + CfgRegionSize)]
+#         fspData = fspData.replace(UDP_Data, b"")
+#
+#
+#         AddDigestData = hashlib.sha256(fspData).hexdigest()
+#
+#         AddDataLength  = sizeof(c_uint16) + sizeof(c_uint16) + sizeof(c_uint16) + len(AddDigestData)
+#         AddDataLength0 = sizeof(c_uint16) + sizeof(c_uint16) + CfgRegionSize
+#         CompDataLength = sizeof(c_uint16) + sizeof(c_uint16) + sizeof(FSP_INFORMATION_HEADER) + AddDataLength + AddDataLength0
+#
+#         ManifestSize += CompDataLength
+#
+#         fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(CompDataType, sizeof(c_uint16))
+#         offset += sizeof(c_uint16)
+#         fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(CompDataLength, sizeof(c_uint16))
+#         offset += sizeof(c_uint16)
+#         fspmanifestbin[offset:offset + sizeof(FSP_INFORMATION_HEADER)] = AddFspInfoHeader
+#         offset += sizeof(FSP_INFORMATION_HEADER)
+#         # FSP Component Manifest Addtional Data for Code
+#         fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataType, sizeof(c_uint16))
+#         offset += sizeof(c_uint16)
+#         fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataLength, sizeof(c_uint16))
+#         offset += sizeof(c_uint16)
+#         fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDigestType, sizeof(c_uint16))
+#         offset += sizeof(c_uint16)
+#         fspmanifestbin[offset:offset + DigestSize] = bytearray(AddDigestData, encoding="utf-8")
+#         offset += DigestSize
+#         # FSP Component Manifest Addtional Data for Configuration
+#         fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataType0, sizeof(c_uint16))
+#         offset += sizeof(c_uint16)
+#         fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataLength0, sizeof(c_uint16))
+#         offset += sizeof(c_uint16)
+#         fspmanifestbin[offset:offset + CfgRegionSize] = UDP_Data
+#         offset += CfgRegionSize
+#
+#         FspAddr += ImageSize
+#
+#     fspmanifestbin[ManifestSizeOffset:ManifestSizeOffset + sizeof(c_uint32)] = Val2Bytes(ManifestSize, sizeof(c_uint32))
+#
+#     fd = open(filename, "wb")
+#     fd.write(bytearray(fspmanifestbin))
+#     fd.close()
 
-
-        AddDigestData = hashlib.sha256(fspData).hexdigest()
-
-        AddDataLength  = sizeof(c_uint16) + sizeof(c_uint16) + sizeof(c_uint16) + len(AddDigestData)
-        AddDataLength0 = sizeof(c_uint16) + sizeof(c_uint16) + CfgRegionSize
-        CompDataLength = sizeof(c_uint16) + sizeof(c_uint16) + sizeof(FSP_INFORMATION_HEADER) + AddDataLength + AddDataLength0
-
-        ManifestSize += CompDataLength
-
-        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(CompDataType, sizeof(c_uint16))
-        offset += sizeof(c_uint16)
-        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(CompDataLength, sizeof(c_uint16))
-        offset += sizeof(c_uint16)
-        fspmanifestbin[offset:offset + sizeof(FSP_INFORMATION_HEADER)] = AddFspInfoHeader
-        offset += sizeof(FSP_INFORMATION_HEADER)
-        # FSP Component Manifest Addtional Data for Code
-        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataType, sizeof(c_uint16))
-        offset += sizeof(c_uint16)
-        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataLength, sizeof(c_uint16))
-        offset += sizeof(c_uint16)
-        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDigestType, sizeof(c_uint16))
-        offset += sizeof(c_uint16)
-        fspmanifestbin[offset:offset + DigestSize] = bytearray(AddDigestData, encoding="utf-8")
-        offset += DigestSize
-        # FSP Component Manifest Addtional Data for Configuration
-        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataType0, sizeof(c_uint16))
-        offset += sizeof(c_uint16)
-        fspmanifestbin[offset:offset + sizeof(c_uint16)] = Val2Bytes(AddDataLength0, sizeof(c_uint16))
-        offset += sizeof(c_uint16)
-        fspmanifestbin[offset:offset + CfgRegionSize] = UDP_Data
-        offset += CfgRegionSize
-
-        FspAddr += ImageSize
-
-    fspmanifestbin[ManifestSizeOffset:ManifestSizeOffset + sizeof(c_uint32)] = Val2Bytes(ManifestSize, sizeof(c_uint32))
-
-    fd = open(filename, "wb")
-    fd.write(bytearray(fspmanifestbin))
-    fd.close()
-
-def CheckOpenssl ():
-    #
-    # Generate file path to Open SSL command
-    #
-    try:
-        OpenSslPath = os.environ['OPENSSL_PATH']
-        global OpenSslCommand
-        OpenSslCommand = os.path.join(OpenSslPath, 'openssl')
-        if ' ' in OpenSslCommand:
-            OpenSslCommand = '"' + OpenSslCommand + '"'
-    except:
-        pass
-
-    #
-    # Verify that Open SSL command is available
-    #
-    try:
-        Process = subprocess.Popen('%s version' % (OpenSslCommand), stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    except:
-        print('ERROR: Open SSL command not available.  Please verify PATH or set OPENSSL_PATH')
-        sys.exit(1)
-
-    Version = Process.communicate()
-    if Process.returncode != 0:
-        print('ERROR: Open SSL command not available.  Please verify PATH or set OPENSSL_PATH')
-        sys.exit(Process.returncode)
-    print(Version[0].decode())
-
-
-def SignFspManifest (FspManifest, SignerPrivateCertFile, OtherPublicCertFile, OutputFile):
-    CheckOpenssl()
-
-    fd = open(FspManifest, 'rb')
-    FspManifestBuffer = fd.read()
-    fd.close()
-
-    #
-    # Sign the input file using the specified private key and capture signature from STDOUT
-    #
-    Process = subprocess.Popen('%s smime -sign -binary -signer "%s" -outform DER -md sha256 -certfile "%s"' % (OpenSslCommand, SignerPrivateCertFile, OtherPublicCertFile), stdin=subprocess.PIPE,  stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    Signature = Process.communicate(input=FspManifestBuffer)[0]
-    if Process.returncode != 0:
-        sys.exit(Process.returncode)
-
-    if OutputFile == '':
-        filename = os.path.basename(FspManifest)
-        base, ext  = os.path.splitext(filename)
-        OutputFile = base + ".sign.bin"
-
-    fspname, ext = os.path.splitext(os.path.basename(OutputFile))
-    filename = fspname + ext
-
-    fd = open(filename, 'wb')
-    fd.write(Signature)
-    fd.write(FspManifestBuffer)
-    fd.close()
-
-def DecodeSignedFspManifest(SignedFspManifest, TrustedPublicCertFile, SignatureSizeStr, OutputFile):
-    CheckOpenssl()
-
-    fd = open(SignedFspManifest, 'rb')
-    SignedFspManifestBuffer = fd.read()
-    fd.close()
-
-    if SignatureSizeStr == '':
-        print("ERROR: please use the option --signature-size to specify the size of the signature data!")
-        sys.exit(1)
-    else:
-        try:
-            SignatureSize = eval(SignatureSizeStr)
-        except:
-            print ('%s is illegal' % SignatureSizeStr)
-            sys.exit(1)
-        if SignatureSize < 0:
-            print("ERROR: The value of option --signature-size can't be set to negative value!")
-            sys.exit(1)
-        elif SignatureSize > len(SignedFspManifestBuffer):
-            print("ERROR: The value of option --signature-size is exceed the size of the input file !")
-            sys.exit(1)
-
-    SignatureBuffer   = SignedFspManifestBuffer[0:SignatureSize]
-    FspManifestBuffer = SignedFspManifestBuffer[SignatureSize:]
-
-    if OutputFile == '':
-        filename = os.path.basename(SignedFspManifest)
-        base, ext  = filename.split('.')[0]
-        OutputFile = base + ".bin"
-
-    fspname, ext = os.path.splitext(os.path.basename(OutputFile))
-    filename = fspname + ext
-
-    #
-    # Save output file contents from input file
-    #
-    fd = open(filename, 'wb')
-    fd.write(FspManifestBuffer)
-    fd.close()
-
-    #
-    # Verify signature
-    #
-    Process = subprocess.Popen('%s smime -verify -inform DER -content %s -CAfile %s' % (OpenSslCommand, filename, TrustedPublicCertFile), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    Process.communicate(input=SignatureBuffer)[0]
-    if Process.returncode != 0:
-        print('ERROR: Verification failed')
-        os.remove(filename)
-        sys.exit(Process.returncode)
-
-    fd = open(filename, 'wb')
-    fd.write(FspManifestBuffer)
-    fd.close()
+# def CheckOpenssl ():
+#     #
+#     # Generate file path to Open SSL command
+#     #
+#     try:
+#         OpenSslPath = os.environ['OPENSSL_PATH']
+#         global OpenSslCommand
+#         OpenSslCommand = os.path.join(OpenSslPath, 'openssl')
+#         if ' ' in OpenSslCommand:
+#             OpenSslCommand = '"' + OpenSslCommand + '"'
+#     except:
+#         pass
+#
+#     #
+#     # Verify that Open SSL command is available
+#     #
+#     try:
+#         Process = subprocess.Popen('%s version' % (OpenSslCommand), stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+#     except:
+#         print('ERROR: Open SSL command not available.  Please verify PATH or set OPENSSL_PATH')
+#         sys.exit(1)
+#
+#     Version = Process.communicate()
+#     if Process.returncode != 0:
+#         print('ERROR: Open SSL command not available.  Please verify PATH or set OPENSSL_PATH')
+#         sys.exit(Process.returncode)
+#     print(Version[0].decode())
+#
+#
+# def SignFspManifest (FspManifest, SignerPrivateCertFile, OtherPublicCertFile, OutputFile):
+#     CheckOpenssl()
+#
+#     fd = open(FspManifest, 'rb')
+#     FspManifestBuffer = fd.read()
+#     fd.close()
+#
+#     #
+#     # Sign the input file using the specified private key and capture signature from STDOUT
+#     #
+#     Process = subprocess.Popen('%s smime -sign -binary -signer "%s" -outform DER -md sha256 -certfile "%s"' % (OpenSslCommand, SignerPrivateCertFile, OtherPublicCertFile), stdin=subprocess.PIPE,  stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+#     Signature = Process.communicate(input=FspManifestBuffer)[0]
+#     if Process.returncode != 0:
+#         sys.exit(Process.returncode)
+#
+#     if OutputFile == '':
+#         filename = os.path.basename(FspManifest)
+#         base, ext  = os.path.splitext(filename)
+#         OutputFile = base + ".sign.bin"
+#
+#     fspname, ext = os.path.splitext(os.path.basename(OutputFile))
+#     filename = fspname + ext
+#
+#     fd = open(filename, 'wb')
+#     fd.write(Signature)
+#     fd.write(FspManifestBuffer)
+#     fd.close()
+#
+# def DecodeSignedFspManifest(SignedFspManifest, TrustedPublicCertFile, SignatureSizeStr, OutputFile):
+#     CheckOpenssl()
+#
+#     fd = open(SignedFspManifest, 'rb')
+#     SignedFspManifestBuffer = fd.read()
+#     fd.close()
+#
+#     if SignatureSizeStr == '':
+#         print("ERROR: please use the option --signature-size to specify the size of the signature data!")
+#         sys.exit(1)
+#     else:
+#         try:
+#             SignatureSize = eval(SignatureSizeStr)
+#         except:
+#             print ('%s is illegal' % SignatureSizeStr)
+#             sys.exit(1)
+#         if SignatureSize < 0:
+#             print("ERROR: The value of option --signature-size can't be set to negative value!")
+#             sys.exit(1)
+#         elif SignatureSize > len(SignedFspManifestBuffer):
+#             print("ERROR: The value of option --signature-size is exceed the size of the input file !")
+#             sys.exit(1)
+#
+#     SignatureBuffer   = SignedFspManifestBuffer[0:SignatureSize]
+#     FspManifestBuffer = SignedFspManifestBuffer[SignatureSize:]
+#
+#     if OutputFile == '':
+#         filename = os.path.basename(SignedFspManifest)
+#         base, ext  = filename.split('.')[0]
+#         OutputFile = base + ".bin"
+#
+#     fspname, ext = os.path.splitext(os.path.basename(OutputFile))
+#     filename = fspname + ext
+#
+#     #
+#     # Save output file contents from input file
+#     #
+#     fd = open(filename, 'wb')
+#     fd.write(FspManifestBuffer)
+#     fd.close()
+#
+#     #
+#     # Verify signature
+#     #
+#     Process = subprocess.Popen('%s smime -verify -inform DER -content %s -CAfile %s' % (OpenSslCommand, filename, TrustedPublicCertFile), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+#     Process.communicate(input=SignatureBuffer)[0]
+#     if Process.returncode != 0:
+#         print('ERROR: Verification failed')
+#         os.remove(filename)
+#         sys.exit(Process.returncode)
+#
+#     fd = open(filename, 'wb')
+#     fd.write(FspManifestBuffer)
+#     fd.close()
 
 class CompareFspComponentHash():
     def __init__(self, bin_path, fd_path):
@@ -1202,36 +1201,37 @@ def main ():
     parser     = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
 
-    parser_rebase  = subparsers.add_parser('rebase',  help='rebase a FSP into a new base address')
+    parser_rebase = subparsers.add_parser('rebase',  help='rebase a FSP into a new base address')
     parser_rebase.set_defaults(which='rebase')
     parser_rebase.add_argument('-f',  '--fspbin' , dest='FspBinary',  type=str, help='FSP binary file path', required = True)
     parser_rebase.add_argument('-c',  '--fspcomp', choices=['t','m','s','o'],  nargs='+', dest='FspComponent', type=str, help='FSP component to rebase', default = "['t']", required = True)
     parser_rebase.add_argument('-b',  '--newbase', dest='FspBase', nargs='+', type=str, help='Rebased FSP binary file name', default = '', required = True)
     parser_rebase.add_argument('-o',  '--outfile', dest='OutputFile', type=str, help='Rebased FSP binary file name', default = '')
 
-    parser_hash  = subparsers.add_parser('hash',  help='generate hash(sha256) for FSP image')
+    parser_hash = subparsers.add_parser('hash',  help='generate hash(sha256) for FSP image')
     parser_hash.set_defaults(which='hash')
     parser_hash.add_argument('-f',  '--fspbin' , dest='FspBinary', type=str, help='FSP binary file path', required = True)
+    parser_hash.add_argument('-m', '--mode', choices=['binary', 'separation'], dest='Mode', type=str, help='Different mode to generate hash for FSP image', default='binary')
 
-    parser_manifest = subparsers.add_parser('manifest', help='generate FSP manifest')
-    parser_manifest.set_defaults(which='manifest')
-    parser_manifest.add_argument('-f', '--fspbin', dest='FspBinary', type=str, help='FSP binary file path', required=True)
-    parser_manifest.add_argument('-s', '--svn', dest='SVN', type=str, help='FSP manifest SVN', default='')
-    parser_manifest.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='FSP manifest binary file name', default='')
-
-    parser_encode = subparsers.add_parser('encode', help='Encode FSP manifest file')
-    parser_encode.set_defaults(which='encode')
-    parser_encode.add_argument('-f', '--fspmanifest', dest='FspManifest', type=str, help='FSP manifest binary file path', required=True)
-    parser_encode.add_argument('--signer-private-cert', dest='SignerPrivateCertFile', type=str, help='specify the signer private cert filename.  If not specified, a test signer private cert is used.')
-    parser_encode.add_argument('--other-public-cert', dest='OtherPublicCertFile', type=str, help='specify the other public cert filename.  If not specified, a test other public cert is used.')
-    parser_encode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
-
-    parser_decode = subparsers.add_parser('decode', help='Decode FSP manifest file')
-    parser_decode.set_defaults(which='decode')
-    parser_decode.add_argument('-f', '--fspmanifest', dest='SignedFspManifest', type=str, help='FSP manifest binary file path', required=True)
-    parser_decode.add_argument('--trusted-public-cert', dest='TrustedPublicCertFile', type=str, help='specify the trusted public cert filename.  If not specified, a test trusted public cert is used.')
-    parser_decode.add_argument('--signature-size', dest='SignatureSizeStr', type=str, help='specify the signature size for decode process.', default='')
-    parser_decode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
+    # parser_manifest = subparsers.add_parser('manifest', help='generate FSP manifest')
+    # parser_manifest.set_defaults(which='manifest')
+    # parser_manifest.add_argument('-f', '--fspbin', dest='FspBinary', type=str, help='FSP binary file path', required=True)
+    # parser_manifest.add_argument('-s', '--svn', dest='SVN', type=str, help='FSP manifest SVN', default='')
+    # parser_manifest.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='FSP manifest binary file name', default='')
+    #
+    # parser_encode = subparsers.add_parser('encode', help='Encode FSP manifest file')
+    # parser_encode.set_defaults(which='encode')
+    # parser_encode.add_argument('-f', '--fspmanifest', dest='FspManifest', type=str, help='FSP manifest binary file path', required=True)
+    # parser_encode.add_argument('--signer-private-cert', dest='SignerPrivateCertFile', type=str, help='specify the signer private cert filename.  If not specified, a test signer private cert is used.')
+    # parser_encode.add_argument('--other-public-cert', dest='OtherPublicCertFile', type=str, help='specify the other public cert filename.  If not specified, a test other public cert is used.')
+    # parser_encode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
+    #
+    # parser_decode = subparsers.add_parser('decode', help='Decode FSP manifest file')
+    # parser_decode.set_defaults(which='decode')
+    # parser_decode.add_argument('-f', '--fspmanifest', dest='SignedFspManifest', type=str, help='FSP manifest binary file path', required=True)
+    # parser_decode.add_argument('--trusted-public-cert', dest='TrustedPublicCertFile', type=str, help='specify the trusted public cert filename.  If not specified, a test trusted public cert is used.')
+    # parser_decode.add_argument('--signature-size', dest='SignatureSizeStr', type=str, help='specify the signature size for decode process.', default='')
+    # parser_decode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
 
     parser_compare = subparsers.add_parser('compare', help='Compare FSP component hash bettween event log binary and platform image')
     parser_compare.set_defaults(which='compare')
@@ -1248,19 +1248,19 @@ def main ():
         if not os.path.exists(args.FspBinary):
             raise Exception ("ERROR: Could not locate FSP binary file '%s' !" % args.FspBinary)
 
-    if args.which == 'encode':
-        if not os.path.exists(args.FspManifest):
-            raise Exception ("ERROR: Could not locate FSP manifest file '%s' !" % args.FspManifest)
-        if not os.path.exists(args.SignerPrivateCertFile):
-            raise Exception ("ERROR: Could not locate signer private cert file '%s' !" % args.SignerPrivateCertFile)
-        if not os.path.exists(args.OtherPublicCertFile):
-            raise Exception ("ERROR: Could not locate other public cert file '%s' !" % args.OtherPublicCertFile)
-
-    if args.which == 'decode':
-        if not os.path.exists(args.SignedFspManifest):
-            raise Exception ("ERROR: Could not locate signed FSP manifest file '%s' !" % args.SignedFspManifest)
-        if not os.path.exists(args.TrustedPublicCertFile):
-            raise Exception("ERROR: Could not locate trusted public cert file '%s' !" % args.TrustedPublicCertFile)
+    # if args.which == 'encode':
+    #     if not os.path.exists(args.FspManifest):
+    #         raise Exception ("ERROR: Could not locate FSP manifest file '%s' !" % args.FspManifest)
+    #     if not os.path.exists(args.SignerPrivateCertFile):
+    #         raise Exception ("ERROR: Could not locate signer private cert file '%s' !" % args.SignerPrivateCertFile)
+    #     if not os.path.exists(args.OtherPublicCertFile):
+    #         raise Exception ("ERROR: Could not locate other public cert file '%s' !" % args.OtherPublicCertFile)
+    #
+    # if args.which == 'decode':
+    #     if not os.path.exists(args.SignedFspManifest):
+    #         raise Exception ("ERROR: Could not locate signed FSP manifest file '%s' !" % args.SignedFspManifest)
+    #     if not os.path.exists(args.TrustedPublicCertFile):
+    #         raise Exception("ERROR: Could not locate trusted public cert file '%s' !" % args.TrustedPublicCertFile)
 
     if args.which == 'compare':
         if not os.path.exists(args.EventLogBin):
@@ -1269,17 +1269,17 @@ def main ():
             raise Exception("ERROR: Could not locate platform image file '%s' !" % args.PlatformImage)
 
     if args.which == 'rebase':
-        RebaseFspBin (args.FspBinary, args.FspComponent, args.FspBase, args.OutputFile)
+        RebaseFspBin(args.FspBinary, args.FspComponent, args.FspBase, args.OutputFile)
     elif args.which == 'hash':
-        HashFspBin (args.FspBinary)
-    elif args.which == 'manifest':
-        GenFspManifest (args.FspBinary, args.SVN, args.OutputFile)
-    elif args.which == 'encode':
-        SignFspManifest (args.FspManifest, args.SignerPrivateCertFile, args.OtherPublicCertFile, args.OutputFile)
-    elif args.which == 'decode':
-        DecodeSignedFspManifest (args.SignedFspManifest, args.TrustedPublicCertFile, args.SignatureSizeStr, args.OutputFile)
+        HashFspBin(args.FspBinary, args.Mode)
+    # elif args.which == 'manifest':
+    #     GenFspManifest (args.FspBinary, args.SVN, args.OutputFile)
+    # elif args.which == 'encode':
+    #     SignFspManifest (args.FspManifest, args.SignerPrivateCertFile, args.OtherPublicCertFile, args.OutputFile)
+    # elif args.which == 'decode':
+    #     DecodeSignedFspManifest (args.SignedFspManifest, args.TrustedPublicCertFile, args.SignatureSizeStr, args.OutputFile)
     elif args.which == 'info':
-        ShowFspInfo (args.FspBinary)
+        ShowFspInfo(args.FspBinary)
     elif args.which == 'compare':
         comp = CompareFspComponentHash(args.EventLogBin, args.PlatformImage)
         comp.Compare()

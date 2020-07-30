@@ -228,7 +228,7 @@ def GetValueFromSec(ini_obj, section, option):
     else:
         return None
 
-def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
+def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes, Mode):
     swid_builder = SWIDBuilder()
 
     ini = configparser.ConfigParser()
@@ -261,14 +261,14 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes):
                 Meta[Attribute] = GetValueFromSec(ini, section, Attribute)
             swid_builder.addMeta(Meta)
 
-    payload = genPayloadBuilder(PayloadFile, HashTypes)
+    payload = genPayloadBuilder(PayloadFile, HashTypes, Mode)
     swid_builder.addPayload(payload)
 
     return swid_builder
 
-def genPayloadBuilder(FileName, HashAlgorithm):
+def genPayloadBuilder(FileName, HashAlgorithm, Mode):
     ToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
-    CmdList = ['python', ToolPath, 'hash', '-f', FileName]
+    CmdList = ['python', ToolPath, 'hash', '-f', FileName, '-m', Mode]
 
     try:
         parseFspImage = subprocess.Popen(CmdList, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
@@ -326,6 +326,7 @@ if __name__ == "__main__":
     parser_genswid = subparsers.add_parser('genswid', help='Generate Swid format file in XML format')
     parser_genswid.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
     parser_genswid.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
+    parser_genswid.add_argument('-m', '--mode', choices=['binary', 'separation'], dest='Mode', type=str, help='Different mode to generate hash for FSP image', default='binary')
     parser_genswid.add_argument('-t', '--hash', dest='HashType', type=str, choices=SupportHashAlgorithmList, help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
     parser_genswid.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Swid file path', default='', required=True)
 
@@ -349,7 +350,7 @@ if __name__ == "__main__":
             if not os.path.exists(os.path.dirname(args.OutputFile)):
                 os.makedirs(os.path.dirname(args.OutputFile))
 
-        xmlObj = GenXml(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType))
+        xmlObj = GenXml(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType, args.Mode))
         xmlObj.genXml()
     elif args.which == "sign":
         if not os.path.exists(args.XmlPath):
