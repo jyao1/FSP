@@ -34,19 +34,24 @@ import argparse
 import subprocess
 import configparser
 from jose import jws
+from binascii import hexlify
 from ecdsa.keys import SigningKey, VerifyingKey
 from pycose.cosemessage import CoseMessage
 from pycose.signmessage import SignMessage
 
-TagTypeList   = ['primary', 'corpus', 'patch', 'supplemental']
-UseMap       = {'required': 2, 'recommended': 3, 'optional': 1}
-OwnershipMap = {'abandon': 3, 'private': 2, 'shared': 1}
 VersionSchemeMap = {'multipartnumeric': 1, 'multipartnumeric-suffix': 2, 'alphanumeric': 3, 'decimal': 4, 'semver': 16384}
 HashAlgorithmMap = {"SHA_256": 1, "SHA_256_128": 2, "SHA_256_120": 3, "SHA_256_96": 4, "SHA_256_64": 5, "SHA_256_32": 6,
                     "SHA_384": 7, "SHA_512": 8, "SHA_3_224": 9, "SHA_3_256": 9, "SHA_3_384": 9, "SHA_3_512": 9}
 RoleMap = {"tagCreator": 1, "softwareCreator": 2, "aggregator": 3, "distributor": 4, "licensor": 5}
 RelMap = {'ancestor': 1, 'component': 2, 'feature': 3, 'installationmedia': 4, 'packageinstaller': 5, 'parent': 6,
           'patches': 7, 'requires': 8, 'see-also': 9, 'supersedes': 10, 'supplemental': 11}
+
+PayloadTypeMap = {"direct": 0, "indirect": 1, "hybriid": 2}
+SupportHashAlgorithmMap = {"SHA_256": 1, "SHA_384": 7, "SHA_512": 8, "SHA_3_256": 10, "SHA_3_384": 11, "SHA_3_512": 12}
+
+CoseTypeMap = {"cose-sign": 98, "cose-sign1": 18, "cose-encrypt": 96, "cose-encrypt0": 16, "cose-mac": 97, "cose-mac0": 17}
+CoseKeyMap = {"alg": 1, "crit": 2, "content type": 3, "kid": 4, "IV": 5, "Partial IV": 6, "counter signature": 7}
+SignSupportAlgorithmMap = {"ES256": -7, "ES384": -35, "ES512": -36}
 
 
 EntityBuilder = {'name': None, 'role': [], 'regid': None, 'thumbprint': None}
@@ -73,10 +78,6 @@ mapDict = {"tag-id": 0, "software-name": 1, "entity": 2, "evidence": 3, "link": 
             "platform-version": 68, "firmware-manufacturer-id": 69, "firmware-manufacturer-name": 70, "firmware-model-name": 71,
             "firmware-version": 72, "rim-link-hash": 73, "support-rim-type-kramdown": 74, "support-rim-format": 75, "support-rim-uri-global": 76,
             "rim-reference": 77, "boot-events": 78, "boot-event-number": 79, "boot-event-type": 80, "boot-digest-list": 81, "boot-event-data": 82}
-
-PayloadTypeMap = {"direct": 0, "indirect": 1, "hybriid": 2}
-SupportHashAlgorithmMap = {"SHA_256": 1, "SHA_384": 7, "SHA_512": 8, "SHA_3_256": 10, "SHA_3_384": 11, "SHA_3_512": 12}
-SignSupportAlgorithmList = ["ES256", "ES384", "ES512"]
 
 class SWIDBuilder:
     def __init__(self):
@@ -206,8 +207,6 @@ class GenCbor():
                 meta_dict[mapDict['revision']] = meta['revision']
                 self.CborData[mapDict['software-meta']].append(meta_dict)
 
-        # child elements
-        # Required
         if self.SWIDBuilder.entities != []:
             self.CborData[mapDict['entity']] = []
             for entity in self.SWIDBuilder.entities:
@@ -237,7 +236,6 @@ class GenCbor():
                 self.CborData[mapDict['link']].append(link_dict)
 
         PayloadData = self.SWIDBuilder.payload[0]
-        self.CborData[mapDict['path-elements']] = {}
         if self.SWIDBuilder.payload != []:
             self.CborData[mapDict['payload']] = {}
             self.CborData[mapDict['payload']][mapDict['directory']] = {}
@@ -275,11 +273,102 @@ class GenCbor():
             self.CborData[mapDict['reference-measurement']][mapDict['rim-link-hash']].append(HashAlgorithmMap[self.HashType])
             self.CborData[mapDict['reference-measurement']][mapDict['rim-link-hash']].append(ReferenceMeasurement['RIMLinkHash'])
 
+        # delete key which value is null in reference-measurement
+        for key in list(self.CborData[mapDict['reference-measurement']].keys()):
+            if self.CborData[mapDict['reference-measurement']][key] == None:
+                del self.CborData[mapDict['reference-measurement']][key]
 
         with open(self.CborPath, 'wb') as f:
             f.write(cbor.dumps(self.CborData))
 
-        print(json.dumps(self.CborData, sort_keys=True, indent=2))
+        print(json.dumps(self.CborData, indent=2))
+
+class DecodeCbor():
+    def __init__(self, FilePath):
+        self.FilePath = FilePath
+        f = open(self.FilePath, 'rb')
+        self.CborData = cbor.load(f)
+        f.close()
+
+    def SearchKey(self, Dict, keyValue):
+        for key in Dict.keys():
+            if key == keyValue:
+                return Dict[key]
+            else:
+                if isinstance(Dict[key], dict):
+                    if self.SearchKey(Dict[key], keyValue) != None:
+                        return self.SearchKey(Dict[key], keyValue)
+                elif isinstance(Dict[key], list):
+                    for item in Dict[key]:
+                        if isinstance(item, dict):
+                            if self.SearchKey(item, keyValue) != None:
+                                return self.SearchKey(item, keyValue)
+                else:
+                    pass
+
+    def Decode(self):
+        if isinstance(self.CborData, dict):
+            self.DecodeCbor(self.CborData)
+        else:
+            self.DecodeSignedCbor(self.CborData)
+
+    def DecodeCbor(self, cborDict):
+        jd = json.dumps(cborDict, indent=2)
+
+        RoleMessage = str([GetKeyByValue(RoleMap, role) for role in self.SearchKey(cborDict, 33)])
+        ThumbprintHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 34)[0]))
+        payloadFileHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 7)[0]))
+        payloadTypeMessage = str(GetKeyByValue(PayloadTypeMap, self.SearchKey(cborDict, 59)))
+        rimlinkHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 73)[0]))
+
+        signatureFlag = 0
+        for line in jd.split('\n'):
+            if ':' in line:
+                flag = 0
+                for key in ["cose-sign", "protected", "unprotected", "concise-swid-tag", "signatures"]:
+                    if key in line:
+                        flag = 1
+                if "signature" in line:
+                    signatureFlag = 1
+
+                if flag:
+                    print(line)
+                else:
+                    KeyValue = eval(eval(line.split(':')[0]))
+                    if KeyValue == 33:
+                        print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + RoleMessage)
+                    elif KeyValue == 34:
+                        print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + ThumbprintHashMessage)
+                    elif KeyValue == 7:
+                        print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + payloadFileHashMessage)
+                    elif KeyValue == 59:
+                        print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + payloadTypeMessage)
+                    elif KeyValue == 73:
+                        print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + rimlinkHashMessage)
+                    else:
+                        if not signatureFlag:
+                            print(line + '   // ' + GetKeyByValue(mapDict, KeyValue))
+                        else:
+                            if KeyValue == 1:
+                                print(line + '   // ' + GetKeyByValue(CoseKeyMap, KeyValue) + ': ' + GetKeyByValue(SignSupportAlgorithmMap, eval(line.split(':')[1])))
+                            else:
+                                print(line + '   // ' + GetKeyByValue(CoseKeyMap, KeyValue))
+            else:
+                print(line)
+
+    def DecodeSignedCbor(self, cborData):
+        SignedCborDict = {}
+        SignedCborDict[GetKeyByValue(CoseTypeMap, cborData.tag)] = {}
+        SignedCborDict[GetKeyByValue(CoseTypeMap, cborData.tag)]["protected"] = str(cborData.value[0])
+        SignedCborDict[GetKeyByValue(CoseTypeMap, cborData.tag)]["unprotected"] = str(cborData.value[1])
+        SignedCborDict[GetKeyByValue(CoseTypeMap, cborData.tag)]["concise-swid-tag"] = cbor.loads(cborData.value[2])
+        SignedCborDict[GetKeyByValue(CoseTypeMap, cborData.tag)]["signatures"] = []
+        for num, item in enumerate(cborData.value[3]):
+            cborData.value[3][num][0] = cbor.loads(cborData.value[3][num][0])
+            cborData.value[3][num][2] = hexlify(cborData.value[3][num][2]).decode()
+            SignedCborDict[GetKeyByValue(CoseTypeMap, cborData.tag)]["signatures"].append(cborData.value[3][num])
+
+        self.DecodeCbor(SignedCborDict)
 
 def ConvertStrToBool(str):
     if str.lower() == 'true':
@@ -375,110 +464,9 @@ def DecodeJwt(FilePath):
 
     header, payload, signing_input, signature = jws._load(SignedData)
     print('header: {}'.format(header))
-    print('payload: {}'.format(json.dumps(json.loads(payload), sort_keys=True, indent=2)))
+    print('payload: {}'.format(json.dumps(json.loads(payload), indent=2)))
     print('signing key: {}'.format(signing_input))
     print('signature: {}'.format(signature))
-
-def DecodeCbor(FilePath, Translate):
-    with open(FilePath, 'rb') as f:
-        content = f.read()
-
-    cborDict = cbor.loads(content)
-
-    if Translate:
-        decodeCborData = {}
-        for key in cborDict.keys():
-            if key in [0, 1, 8, 9, 10, 11, 12, 13, 14]:
-                if key == 14:
-                    decodeCborData[GetKeyByValue(mapDict, key)] = GetKeyByValue(VersionSchemeMap, cborDict[key])
-                else:
-                    decodeCborData[GetKeyByValue(mapDict, key)] = cborDict[key]
-            elif key == 2:
-                decodeCborData[GetKeyByValue(mapDict, key)] = []
-                for entity in cborDict[key]:
-                    entityDict = {}
-                    for subkey in entity:
-                        if subkey == 33:
-                            entityDict[GetKeyByValue(mapDict, subkey)] = []
-                            for role in entity[subkey]:
-                                entityDict[GetKeyByValue(mapDict, subkey)].append(GetKeyByValue(RoleMap, role))
-                        else:
-                            entityDict[GetKeyByValue(mapDict, subkey)] = entity[subkey]
-
-                    decodeCborData[GetKeyByValue(mapDict, key)].append(entityDict)
-            elif key == 3:
-                pass
-            elif key == 4:
-                decodeCborData[GetKeyByValue(mapDict, key)] = []
-                for link in cborDict[key]:
-                    linkDict = {}
-                    for subkey in link:
-                        if subkey in [10, 37, 38, 41]:
-                            linkDict[GetKeyByValue(mapDict, subkey)] = link[subkey]
-                        elif subkey == 39:
-                            linkDict[GetKeyByValue(mapDict, subkey)] = GetKeyByValue(OwnershipMap, link[subkey])
-                        elif subkey == 40:
-                            linkDict[GetKeyByValue(mapDict, subkey)] = GetKeyByValue(RelMap, link[subkey])
-                        elif subkey == 42:
-                            linkDict[GetKeyByValue(mapDict, subkey)] = GetKeyByValue(UseMap, link[subkey])
-
-                    decodeCborData[GetKeyByValue(mapDict, key)].append(linkDict)
-            elif key == 5:
-                decodeCborData[GetKeyByValue(mapDict, key)] = []
-                for meta in cborDict[key]:
-                    metaDict = {}
-                    for subkey in meta:
-                        metaDict[GetKeyByValue(mapDict, subkey)] = meta[subkey]
-
-                    decodeCborData[GetKeyByValue(mapDict, key)].append(metaDict)
-            elif key == 6:
-                decodeCborData[GetKeyByValue(mapDict, key)] = {}
-                for subkey in cborDict[key]:
-                    decodeCborData[GetKeyByValue(mapDict, key)][GetKeyByValue(mapDict, subkey)] = {}
-                    for sub_subkey in cborDict[key][subkey]:
-                        if sub_subkey == 7:
-                            decodeCborData[GetKeyByValue(mapDict, key)][GetKeyByValue(mapDict, subkey)][GetKeyByValue(mapDict, sub_subkey)] = []
-                            for item in cborDict[key][subkey][sub_subkey]:
-                                decodeCborData[GetKeyByValue(mapDict, key)][GetKeyByValue(mapDict, subkey)][
-                                    GetKeyByValue(mapDict, sub_subkey)].append([
-                                    GetKeyByValue(HashAlgorithmMap, item[0]), item[1]])
-                        else:
-                            decodeCborData[GetKeyByValue(mapDict, key)][GetKeyByValue(mapDict, subkey)][
-                                GetKeyByValue(mapDict, sub_subkey)] = cborDict[key][subkey][sub_subkey]
-
-        print(json.dumps(decodeCborData, sort_keys=True, indent=2))
-    else:
-        if not isinstance(cborDict, dict):
-            HierarchyDiplay(str(cborDict).replace(' ', ''))
-
-        else:
-            print(json.dumps(cborDict, sort_keys=True, indent=2))
-
-def HierarchyDiplay(str):
-    MinIndent = 0
-    MaxIndent = -2
-    for num, i in enumerate(str):
-        if i in ['(', '[']:
-            MaxIndent += 2
-
-    for i in str:
-        if i == ']':
-            MaxIndent -= 2
-            print('\n' + ' ' * MaxIndent, end='')
-        if i == ')':
-            MaxIndent -= 2
-            print('\n' + ' ' * MaxIndent, end='')
-
-        print(i, end='')
-        
-        if i == '(':
-            MinIndent += 2
-            print('\n' + ' ' * MinIndent, end='')
-        if i == ',':
-            print('\n' + ' ' * MinIndent, end='')
-        if i == '[':
-            MinIndent += 2
-            print('\n' + ' ' * MinIndent, end='')
 
 def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
     with open(FilePath, 'rb') as f:
@@ -520,8 +508,6 @@ def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
 
     with open(SignedCborPath, 'wb') as f:
         f.write(cbor.dumps(cbor.loads(sign_msg.encode())))
-
-    print(cbor.dumps(cbor.loads(sign_msg.encode())))
 
 def VerifySignedCbor(FilePath, Key, Algorithm):
     with open(FilePath, 'rb') as f:
@@ -576,14 +562,13 @@ if __name__ == "__main__":
     parser_decode = subparsers.add_parser('decode', help='Decode cbor format file')
     parser_decode.set_defaults(which='decode')
     parser_decode.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
-    parser_decode.add_argument('-t', '--translate', dest='Translate', action='store_true', help='Flag used to enable translate func')
     parser_decode.add_argument('--jwt', dest='JWT', action='store_true', help='Flag used to enable decode Json Web Token')
 
     parser_sign = subparsers.add_parser('sign', help='Sign cbor file')
     parser_sign.set_defaults(which='sign')
     parser_sign.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
     parser_sign.add_argument('--key', dest='PrivateKey', type=str, help='Private key for signing', required=True)
-    parser_sign.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmList, help='Algorithm for signing', required=True)
+    parser_sign.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmMap.keys(), help='Algorithm for signing', required=True)
     parser_sign.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to sign cbor')
     parser_sign.add_argument('-o', '--output', dest='SignedCborPath', type=str, help='SignedCbor file path COSE/JWS', required=True)
 
@@ -591,7 +576,7 @@ if __name__ == "__main__":
     parser_verify.set_defaults(which='verify')
     parser_verify.add_argument('-f', '--file', dest='File', type=str, help='Signed file path', required=True)
     parser_verify.add_argument('--key', dest='PublicKey', type=str, help='Public key for signing', required=True)
-    parser_verify.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmList, help='Algorithm for signing', required=True)
+    parser_verify.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmMap.keys(), help='Algorithm for signing', required=True)
     parser_verify.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to verify JWT')
 
     args = parser.parse_args()
@@ -627,8 +612,8 @@ if __name__ == "__main__":
         if args.JWT:
             DecodeJwt(args.File)
         else:
-            DecodeCbor(args.File, args.Translate)
-
+            Decode = DecodeCbor(args.File)
+            Decode.Decode()
 
     if args.which == 'sign':
         if args.JWS:
