@@ -436,6 +436,10 @@ def genPayloadBuilder(FileName, HashAlgorithm):
         msg = parseFspImage.communicate()
     except Exception:
         print(msg[1])
+    else:
+        if msg[0].decode() == '':
+            print(msg[1].decode())
+            os._exit(1)
 
     FSPComponents = msg[0].decode().split('\r\n')
 
