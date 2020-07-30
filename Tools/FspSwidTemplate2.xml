@@ -1,4 +1,4 @@
-<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference URI="#object"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>8c64tneCGniVNJWuoi3okaK2k0FoYp9c/vyQUYxD4uw=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue>ka89BqrjY2lJXgYed4DT3w40Bj6he30ElgDx8gWY1BxZpm5PCsKhCBgCvLB8o6bVcWYhlEI3NMCPtWyueLseB0CmWDEfPZ0DmQ8cvFzMNKFPSp/YHkuPjx4H//PIImXurnHSdHd98SkQPHlbk/pcEhlm/+kAjnurMTnLZkKzPMmstBW6gKiLkIiZBEwDylIcCly/UKhHAQpqU5Iwf4B1iIyjiXGZAu93QyeGEYOEd8oqTrJP6Yj8UxUGJxYUAizg6WKO8OZ7csepy9AUmOXgWd3lkqEj76LuMuoVlSnDqD9Iy0N2ZGh0mH/Tvq35O9Ftc2objliVciZhr3Tsh6A2nQ==</ds:SignatureValue><ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIIC/zCCAeegAwIBAgIUEC/C2kDCk1FbbxWDMjSNhcxsnfkwDQYJKoZIhvcNAQEL
+<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference URI="#object"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>aLw+xAPNY48TNBUIcb2671q4HQjtqzZzQ9GXfn3eT+8=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue>KPCGnudiaEp0rEhTk7kd3zYPLeNm2ChzULuynKWC3lfBlQH9VUmkWQOkJ332LIY9b4cGcWJqoB2FqavkLvvLdBaDtZKmUI/rgcVK5eV45PtN0VpBQYnKYC59Omm4E0cCOmmuTF/DzYPRHGaIElT4aO44Ld30PGA6TEqCeC8becBvJSO0f2u7RJSIdcMiIMaMD86b8UmL7Q3JotQXn9JLX54qbRK6Kmib6CATunEm+LCDm8cDAvgyd4hg2womH99AAGj184UQmXJxUqcpqYU74+rSKapMS5QZtbrE6YOrBiWOAKiVeP0hFiCTYS7OmDogq727iJ/tdjZZmalyp3Gahw==</ds:SignatureValue><ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIIC/zCCAeegAwIBAgIUEC/C2kDCk1FbbxWDMjSNhcxsnfkwDQYJKoZIhvcNAQEL
 BQAwDzENMAsGA1UEAwwEdGVzdDAeFw0yMDA2MTUwMzAzNTNaFw0yMDA2MTYwMzAz
 NTNaMA8xDTALBgNVBAMMBHRlc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK
 AoIBAQDio8/jCx687P5RrkfOS/o4uJGVypSCgv7SmHWpCh1J7ATtx8T0GanFMOKK
@@ -21,9 +21,12 @@ HjE4
 	<Meta xmlns:rim="https://trustedcomputinggroup.org/wp-content/uploads/TCG_RIM_Model" colloquialVersion="AmberLakeFsp_3.7.6" edition="FSP" product="AmberLakeFsp" revision="3.7.6" rim:PayloadType="Direct" rim:PlatformManufacturerStr="Intel" rim:PlatformManufacturerId="343" rim:PlatformModel="AmberLake" rim:PlatformVersion="3.7.6" rim:FirmwareManufacturerStr="Intel" rim:FirmwareManufacturerId="343" rim:FirmwareVersion="3.7.6" rim:BindingSpec="RIMIM" rim:BindingSpecVersion="01" rim:RIMLinkHash="88f21d8e44d4271149297404df91caf207130bfa116582408abd04ede6db7f51"/>
 	<Payload xmlns:SHA256="http://www.w3.org/2001/04/xmlenc#sha256" n8060:envVarPrefix="$" n8060:envVarSuffix="" n8060:pathSeparator="/">
 		<Directory name="FSP binary" location="Fsp.fd">
-			<File name="FSPS" size="188416" SHA256:hash="5abb9c36115a8a824ddc4aca8b8dbfe83030115d6a0f2acfb0d8e9cfbc146aa4"/>
-			<File name="FSPM" size="417792" SHA256:hash="bb17a66cb9fef326865a31e6b812d9941b672aa3b87c5c3ffe4a47785cd30032"/>
-			<File name="FSPT" size="12288" SHA256:hash="39204b73da57336b330b46b8a955bf2d0ce1f31f49493d7d7829743324274c7d"/>
+			<File name="FSPS-Code" size="185320" SHA256:hash="11fbcfd691a7458031b08fed615f798a1090c81ddb65a83869e28b405a6380b0"/>
+			<File name="FSPS-Udp" size="3096" SHA256:hash="58ad836fcc7e9318b2b141f7759a3404411847dd0cba3691d7f18f6a1a186262"/>
+			<File name="FSPM-Code" size="416184" SHA256:hash="b70ed0f8800d4d21e19e459bd9f58e3a90e39b7bfc3aa7d72ca7aaaf83d74856"/>
+			<File name="FSPM-Udp" size="1608" SHA256:hash="e6037112df7ff3f38cb408849699084f315d97009bcd2d855c8f39a880056ae4"/>
+			<File name="FSPT-Code" size="12184" SHA256:hash="f661b552d0931238c46dd38fd900b8a33049042d95220c8388c3986671e3dd10"/>
+			<File name="FSPT-Udp" size="104" SHA256:hash="38bb0e8297c926ec202d1530d70292cbf396a2097f59de3f80df2a0417d6fe90"/>
 		</Directory>
 	</Payload>
 </SoftwareIdentity></ds:Object></ds:Signature>

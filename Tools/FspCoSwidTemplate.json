@@ -1,113 +1,104 @@
 {
-  "COSE_Sign" : {
-    "protected" : "",
-    "unprotected" : {},
-
-    /* payload */
-    "concise-swid-tag" : {
-        "0" : "CC92BA16-8450-4C4B-8EFA-F34D5299D5E0", // tag-id
-        "12" : "0", // tag-version
-        "8" : "false", // corpus
-        "9" : "false", // patch
-        "11" : "false", // supplemental
-        "1" : "AmberLakeFspBin", // software-name
-        "13" : "01", // software-version
-        "14" : "alphanumeric", // version-scheme
-        "10" : "https://github.com/intel/FSP/AmberLakeFspBinPkg", // media
-        "5" : [ // software-meta
-            {
-                "45" : "AmberLakeFsp_3.7.6", // colloquial-version
-                "47" : "FSP", // edition
-                "52" : "AmberLakeFsp", // product
-                "54" : "3.7.6" // revision
-            }
+    "cose-sign": {
+      "protected": "b''",
+      "unprotected": "{}",
+      "concise-swid-tag": {
+        "0": "CC92BA16-8450-4C4B-8EFA-F34D5299D5E0",   // tag-id
+        "12": 0,   // tag-version
+        "1": "AmberLakeFspBin",   // software-name
+        "13": "01",   // software-version
+        "8": false,   // corpus
+        "9": true,   // patch
+        "11": false,   // supplemental
+        "5": [   // software-meta
+          {
+            "45": "AmberLakeFsp_3.7.6",   // colloquial-version
+            "47": "FSP",   // edition
+            "52": "AmberLakeFsp",   // product
+            "54": "3.7.6"   // revision
+          }
         ],
-        "2" : [ // entity
-            {
-                "31" : "Intel", // entity-name
-                "32" : "http://www.intel.com", // reg-id
-                "33" : [2, 1], // role : [software-creator, tag-creator]
-                "34" : [ // thumbprint
-                    1, // sha256
-                    "1234567812345678123456781234567812345678123456781234567812345678"
-                ]
-            }
+        "2": [   // entity
+          {
+            "31": "Intel",   // entity-name
+            "33": [   // role: ['softwareCreator', 'tagCreator']
+              2,
+              1
+            ],
+            "34": [   // thumbprint: SHA_256
+              1,
+              "1234567812345678123456781234567812345678123456781234567812345678"
+            ],
+            "32": "http://www.intel.com"   // reg-id
+          }
         ],
-        "4" : [ // link
-            {
-                "38" : "https://github.com/intel/FSP/AmberLakeFspBinPkg", // href
-                "40" : 4  // rel : installationmedia
-            }
+        "4": [   // link
+          {
+            "38": "https://github.com/intel/FSP/AmberLakeFspBinPkg",   // href
+            "40": 4   // rel
+          }
         ],
-        "6" : { // payload
-            "16" : { // directory
-                "23" : "Fsp.fd", // location
-                "24" : "FSP binary" // fs-name
-            },
-            "26" : { // path-elements
-                "17": [
-                    {
-                        "23" : "FSPT", // location
-                        "20" : "12288", // size
-                        "7" : [ // hash
-                            // https://www.iana.org/assignments/named-information/named-information.xhtml
-                            1, // sha256
-                            "f661b552d0931238c46dd38fd900b8a33049042d95220c8388c3986671e3dd10"
-                        ]
-                    },
-                    {
-                        "23" : "FSPM", // location
-                        "20" : "417792", // size
-                        "7" : [ // hash
-                            // https://www.iana.org/assignments/named-information/named-information.xhtml
-                            1, // sha256
-                            "b70ed0f8800d4d21e19e459bd9f58e3a90e39b7bfc3aa7d72ca7aaaf83d74856"
-                        ]
-                    },
-                    {
-                        "23" : "FSPS", // location
-                        "20" : "188416", // size
-                        "7" : [ // hash
-                            // https://www.iana.org/assignments/named-information/named-information.xhtml
-                            1, // sha256
-                            "11fbcfd691a7458031b08fed615f798a1090c81ddb65a83869e28b405a6380b0"
-                        ]
-                    }
-                ]
+        "6": {   // payload
+          "16": {   // directory
+            "24": "FSP binary",   // fs-name
+            "23": "Fsp.fd",   // location
+            "26": {   // path-elements
+              "17": [   // file
+                {
+                  "24": "FSPS",   // fs-name
+                  "20": "188416",   // size
+                  "7": [   // hash: SHA_256
+                    1,
+                    "5abb9c36115a8a824ddc4aca8b8dbfe83030115d6a0f2acfb0d8e9cfbc146aa4"
+                  ]
+                },
+                {
+                  "24": "FSPM",   // fs-name
+                  "20": "417792",   // size
+                  "7": [   // hash: SHA_256
+                    1,
+                    "bb17a66cb9fef326865a31e6b812d9941b672aa3b87c5c3ffe4a47785cd30032"
+                  ]
+                },
+                {
+                  "24": "FSPT",   // fs-name
+                  "20": "12288",   // size
+                  "7": [   // hash: SHA_256
+                    1,
+                    "39204b73da57336b330b46b8a955bf2d0ce1f31f49493d7d7829743324274c7d"
+                  ]
+                }
+              ]
             }
+          }
         },
-        "58" : { // reference-measurement
-            "59" : 0, // payload-type : direct
-            "61" : "any-uri", // platform-configuration-uri-global
-            "62" : "any-uri", // platform-configuration-uri-local
-            "63" : "TCG RIM", // binding-spec-name
-            "64" : "1.2", // binding-spec-version
-            "65" : "343", // platform-manufacturer-id : intel
-            "66" : "intel", // platform-manufacturer-name
-            "67" : "AmberLake", // platform-model-name
-            "68" : "198406", // platform-version
-            "69" : "343", // firmware-manufacturer-id : intel
-            "70" : "intel", // firmware-manufacturer-name
-            "71" : "", // firmware-model-name
-            "72" : "198406", // firmware-version
-            "73" :  [ // rim-link-hash
-                1, // sha256
-                "88f21d8e44d4271149297404df91caf207130bfa116582408abd04ede6db7f51"
-            ]
+        "58": {   // reference-measurement
+          "59": 0,   // payload-type: direct
+          "63": "RIMIM",   // binding-spec-name
+          "64": "01",   // binding-spec-version
+          "65": "343",   // platform-manufacturer-id
+          "66": "Intel",   // platform-manufacturer-name
+          "67": "AmberLake",   // platform-model-name
+          "68": "3.7.6",   // platform-version
+          "69": "343",   // firmware-manufacturer-id
+          "70": "Intel",   // firmware-manufacturer-name
+          "72": "3.7.6",   // firmware-version
+          "73": [   // rim-link-hash: SHA_256
+            1,
+            "88f21d8e44d4271149297404df91caf207130bfa116582408abd04ede6db7f51"
+          ]
         }
-    }, // "concise-swid-tag"
-    
-    "signature" : [
-        {
-            // RFC8152 - COSE
-            "protected" : {
-                "1" : "-7" // alg : ECDSA256
-            },
-            "unprotected" : {
-                "4" : "11", // kid
-            },
-            "signature" : "1234567812345678123456781234567812345678123456781234567812345678"
-        }
-    ]
+      },
+      "signatures": [
+        [
+          {
+            "1": -7   // alg: ES256
+          },
+          {
+            "4": "11"   // kid
+          },
+          "430a1d242986d741ca483b990b119aab68f13251c1cf70af477219bf2d6e68c42514712f50a4aa39079faae22865668b46eaee126563a645aba0f01807c906e0"
+        ]
+      ]
+    }
   }
-}
