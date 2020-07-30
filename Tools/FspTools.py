@@ -801,7 +801,7 @@ def ShowFspInfo (fspfile):
         print ("FSP_%s contains %s" % (fsp.Type, ','.join(fvlist)))
         print ("%s" % (OutputStruct(fsp.Fih, 0, fsp.Fih.HeaderLength)))
 
-def RebaseFspBin (FspBinary, FspComponent, FspBase, OutputDir, OutputFile):
+def RebaseFspBin (FspBinary, FspComponent, FspBase, OutputFile):
     fd = FirmwareDevice(0, FspBinary)
     fd.ParseFd  ()
     fd.ParseFsp ()
@@ -871,7 +871,7 @@ def RebaseFspBin (FspBinary, FspComponent, FspBase, OutputDir, OutputFile):
         OutputFile = base + "_%08X" % newbase + ext
 
     fspname, ext = os.path.splitext(os.path.basename(OutputFile))
-    filename = os.path.join(OutputDir, fspname + ext)
+    filename = fspname + ext
     fd = open(filename, "wb")
     fd.write(newfspbin)
     fd.close()
@@ -907,7 +907,7 @@ def HashFspBin (FspBinary):
     #     print ("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
     #     FspAddr += ImageSize
 
-def GenFspManifest (FspBinary, SvnNum, OutputDir, OutputFile):
+def GenFspManifest (FspBinary, SvnNum, OutputFile):
     fd = FirmwareDevice(0, FspBinary)
     fd.ParseFd()
     fd.ParseFsp()
@@ -918,7 +918,7 @@ def GenFspManifest (FspBinary, SvnNum, OutputDir, OutputFile):
         OutputFile = base + "Manifest.bin"
 
     fspname, ext = os.path.splitext(os.path.basename(OutputFile))
-    filename = os.path.join(OutputDir, fspname + ext)
+    filename = fspname + ext
 
     fspmanifestbin = bytearray([])
     DigestSize = 64
@@ -1035,7 +1035,7 @@ def CheckOpenssl ():
     print(Version[0].decode())
 
 
-def SignFspManifest (FspManifest, SignerPrivateCertFile, OtherPublicCertFile, OutputDir, OutputFile):
+def SignFspManifest (FspManifest, SignerPrivateCertFile, OtherPublicCertFile, OutputFile):
     CheckOpenssl()
 
     fd = open(FspManifest, 'rb')
@@ -1056,14 +1056,14 @@ def SignFspManifest (FspManifest, SignerPrivateCertFile, OtherPublicCertFile, Ou
         OutputFile = base + ".sign.bin"
 
     fspname, ext = os.path.splitext(os.path.basename(OutputFile))
-    filename = os.path.join(OutputDir, fspname + ext)
+    filename = fspname + ext
 
     fd = open(filename, 'wb')
     fd.write(Signature)
     fd.write(FspManifestBuffer)
     fd.close()
 
-def DecodeSignedFspManifest(SignedFspManifest, TrustedPublicCertFile, SignatureSizeStr, OutputDir, OutputFile):
+def DecodeSignedFspManifest(SignedFspManifest, TrustedPublicCertFile, SignatureSizeStr, OutputFile):
     CheckOpenssl()
 
     fd = open(SignedFspManifest, 'rb')
@@ -1095,7 +1095,7 @@ def DecodeSignedFspManifest(SignedFspManifest, TrustedPublicCertFile, SignatureS
         OutputFile = base + ".bin"
 
     fspname, ext = os.path.splitext(os.path.basename(OutputFile))
-    filename = os.path.join(OutputDir, fspname + ext)
+    filename = fspname + ext
 
     #
     # Save output file contents from input file
@@ -1207,8 +1207,7 @@ def main ():
     parser_rebase.add_argument('-f',  '--fspbin' , dest='FspBinary',  type=str, help='FSP binary file path', required = True)
     parser_rebase.add_argument('-c',  '--fspcomp', choices=['t','m','s','o'],  nargs='+', dest='FspComponent', type=str, help='FSP component to rebase', default = "['t']", required = True)
     parser_rebase.add_argument('-b',  '--newbase', dest='FspBase', nargs='+', type=str, help='Rebased FSP binary file name', default = '', required = True)
-    parser_rebase.add_argument('-o',  '--outdir' , dest='OutputDir',  type=str, help='Output directory path', default = '.')
-    parser_rebase.add_argument('-n',  '--outfile', dest='OutputFile', type=str, help='Rebased FSP binary file name', default = '')
+    parser_rebase.add_argument('-o',  '--outfile', dest='OutputFile', type=str, help='Rebased FSP binary file name', default = '')
 
     parser_hash  = subparsers.add_parser('hash',  help='generate hash(sha256) for FSP image')
     parser_hash.set_defaults(which='hash')
@@ -1218,24 +1217,21 @@ def main ():
     parser_manifest.set_defaults(which='manifest')
     parser_manifest.add_argument('-f', '--fspbin', dest='FspBinary', type=str, help='FSP binary file path', required=True)
     parser_manifest.add_argument('-s', '--svn', dest='SVN', type=str, help='FSP manifest SVN', default='')
-    parser_manifest.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
-    parser_manifest.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='FSP manifest binary file name', default='')
+    parser_manifest.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='FSP manifest binary file name', default='')
 
     parser_encode = subparsers.add_parser('encode', help='Encode FSP manifest file')
     parser_encode.set_defaults(which='encode')
     parser_encode.add_argument('-f', '--fspmanifest', dest='FspManifest', type=str, help='FSP manifest binary file path', required=True)
     parser_encode.add_argument('--signer-private-cert', dest='SignerPrivateCertFile', type=str, help='specify the signer private cert filename.  If not specified, a test signer private cert is used.')
     parser_encode.add_argument('--other-public-cert', dest='OtherPublicCertFile', type=str, help='specify the other public cert filename.  If not specified, a test other public cert is used.')
-    parser_encode.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
-    parser_encode.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
+    parser_encode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
 
     parser_decode = subparsers.add_parser('decode', help='Decode FSP manifest file')
     parser_decode.set_defaults(which='decode')
     parser_decode.add_argument('-f', '--fspmanifest', dest='SignedFspManifest', type=str, help='FSP manifest binary file path', required=True)
     parser_decode.add_argument('--trusted-public-cert', dest='TrustedPublicCertFile', type=str, help='specify the trusted public cert filename.  If not specified, a test trusted public cert is used.')
     parser_decode.add_argument('--signature-size', dest='SignatureSizeStr', type=str, help='specify the signature size for decode process.', default='')
-    parser_decode.add_argument('-o', '--outdir', dest='OutputDir', type=str, help='Output directory path', default='.')
-    parser_decode.add_argument('-n', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
+    parser_decode.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Signed FSP manifest binary file name', default='')
 
     parser_compare = subparsers.add_parser('compare', help='Compare FSP component hash bettween event log binary and platform image')
     parser_compare.set_defaults(which='compare')
@@ -1251,8 +1247,6 @@ def main ():
     if args.which in ['rebase', 'hash', 'manifest', 'info']:
         if not os.path.exists(args.FspBinary):
             raise Exception ("ERROR: Could not locate FSP binary file '%s' !" % args.FspBinary)
-        if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
-            raise Exception ("ERROR: Invalid output directory '%s' !" % args.OutputDir)
 
     if args.which == 'encode':
         if not os.path.exists(args.FspManifest):
@@ -1261,16 +1255,12 @@ def main ():
             raise Exception ("ERROR: Could not locate signer private cert file '%s' !" % args.SignerPrivateCertFile)
         if not os.path.exists(args.OtherPublicCertFile):
             raise Exception ("ERROR: Could not locate other public cert file '%s' !" % args.OtherPublicCertFile)
-        if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
-            raise Exception ("ERROR: Invalid output directory '%s' !" % args.OutputDir)
 
     if args.which == 'decode':
         if not os.path.exists(args.SignedFspManifest):
             raise Exception ("ERROR: Could not locate signed FSP manifest file '%s' !" % args.SignedFspManifest)
         if not os.path.exists(args.TrustedPublicCertFile):
             raise Exception("ERROR: Could not locate trusted public cert file '%s' !" % args.TrustedPublicCertFile)
-        if hasattr(args, 'OutputDir') and not os.path.exists(args.OutputDir):
-            raise Exception ("ERROR: Invalid output directory '%s' !" % args.OutputDir)
 
     if args.which == 'compare':
         if not os.path.exists(args.EventLogBin):
@@ -1279,15 +1269,15 @@ def main ():
             raise Exception("ERROR: Could not locate platform image file '%s' !" % args.PlatformImage)
 
     if args.which == 'rebase':
-        RebaseFspBin (args.FspBinary, args.FspComponent, args.FspBase, args.OutputDir, args.OutputFile)
+        RebaseFspBin (args.FspBinary, args.FspComponent, args.FspBase, args.OutputFile)
     elif args.which == 'hash':
         HashFspBin (args.FspBinary)
     elif args.which == 'manifest':
-        GenFspManifest (args.FspBinary, args.SVN, args.OutputDir, args.OutputFile)
+        GenFspManifest (args.FspBinary, args.SVN, args.OutputFile)
     elif args.which == 'encode':
-        SignFspManifest (args.FspManifest, args.SignerPrivateCertFile, args.OtherPublicCertFile, args.OutputDir, args.OutputFile)
+        SignFspManifest (args.FspManifest, args.SignerPrivateCertFile, args.OtherPublicCertFile, args.OutputFile)
     elif args.which == 'decode':
-        DecodeSignedFspManifest (args.SignedFspManifest, args.TrustedPublicCertFile, args.SignatureSizeStr, args.OutputDir, args.OutputFile)
+        DecodeSignedFspManifest (args.SignedFspManifest, args.TrustedPublicCertFile, args.SignatureSizeStr, args.OutputFile)
     elif args.which == 'info':
         ShowFspInfo (args.FspBinary)
     elif args.which == 'compare':
