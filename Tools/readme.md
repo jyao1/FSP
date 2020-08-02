@@ -73,7 +73,7 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    `FspGenCoSwid.py sign -f FspRim.cbor --key TestKey\ecc-private-key.pem --alg ES256 -o FspRim.sign.cbor`
 
-   Sample output is at [FspCoSwidTemplate.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate.json)
+   Sample output is at [FspCoSwidTemplate.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate.cbor) and binary dump at [FspCoSwidTemplate.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate.json)
 
 2) Generate RIM in separation mode
 
@@ -85,7 +85,7 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 2.2) CoSWID tag
 
-   Sample output is at [FspCoSwidTemplate2.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate2.json)
+   Sample output is at [FspCoSwidTemplate2.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate2.cbor) and binary dump at [FspCoSwidTemplate2.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate2.json)
 
 3) Verification
 
@@ -136,13 +136,11 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 ## Feature not implemented yet
 
-1) RIMLinkHash
+1) thumbprint
 
-2) thumbprint
+2) Support certificate chain
 
-3) Support certificate chain
-
-4) CoSWID keyid
+3) CoSWID keyid
 
 ## Known limitation
 This package is only the sample code to show the concept.
