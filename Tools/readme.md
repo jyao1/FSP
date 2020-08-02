@@ -3,8 +3,9 @@
 ## Specification
 
    * RIM
-     * TCG: [TCG RIM Model](https://trustedcomputinggroup.org/wp-content/uploads/TCG_RIM_Model_v1-r13_2feb20.pdf)
-     * TCG: [TCG PcClient RIM](https://trustedcomputinggroup.org/wp-content/uploads/TCG_PC_Client_RIM_r0p15_15june2020.pdf)
+     * NIST: SP800-155 [BIOS Integrity Measurement Guidelines](https://csrc.nist.gov/CSRC/media/Publications/sp/800-155/draft/documents/draft-SP800-155_Dec2011.pdf)
+     * TCG: [TCG Reference Integrity Manifest (RIM) Information Model](https://trustedcomputinggroup.org/wp-content/uploads/TCG_RIM_Model_v1-r13_2feb20.pdf)
+     * TCG: [TCG PC Client Reference Integrity Measurement](https://trustedcomputinggroup.org/wp-content/uploads/TCG_PC_Client_RIM_r0p15_15june2020.pdf)
 
    * SWID:
      * ISO/IEC 19770-2:2015 Part 2: Software Identification Tag
@@ -14,6 +15,15 @@
    * CoSWID:
      * SACM: [Concise Software Identification Tags](https://datatracker.ietf.org/doc/draft-ietf-sacm-coswid/)
      * RATS: [Reference Integrity Measurement Extension for Concise Software Identities](https://datatracker.ietf.org/doc/draft-birkholz-rats-coswid-rim/)
+
+   * Other related TCG specification
+     * TCG: [TCG Platform Certificate Profile](https://trustedcomputinggroup.org/resource/tcg-platform-certificate-profile/)
+     * TCG: [TCG PC Client Platform Firmware Integrity Measurement](https://trustedcomputinggroup.org/wp-content/uploads/TCG_PC_Client-FIM_v1r24_3feb20.pdf)
+     * TCG: [TCG Platform Firmware Profile](https://trustedcomputinggroup.org/resource/pc-client-specific-platform-firmware-profile-specification/)
+     * TCG: [TCG Server Management Domain Firmware Profile](https://trustedcomputinggroup.org/wp-content/uploads/TCG_ServerManagementDomainFirmwareProfile_v1p00_11aug2020.pdf)
+     * TCG: [TCG EK Credential Profile](https://trustedcomputinggroup.org/resource/tcg-ek-credential-profile-for-tpm-family-2-0/)
+     * TCG: [TCG PC Client Platform TPM Profile (PTP)](https://trustedcomputinggroup.org/resource/pc-client-platform-tpm-profile-ptp-specification/)
+     * TCG: [TCG DICE certificate Profile](https://trustedcomputinggroup.org/wp-content/uploads/DICE-Certificate-Profiles-r01_3june2020-1.pdf)
 
 ## Feature
 
@@ -82,14 +92,14 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 3.1) Verify: FSP binary in flash == FSP RIM == TCG event log
 
 3.1.1) Without TCG event log:
-     Verify the FSP binary hash (verify FSP binary with hash in RIM)
+   Verify the FSP binary hash (verify FSP binary with hash in RIM)
 
-     TBD
+   TBD
 
 3.1.2) With TCG event log:
-     Verify the TCG event log with RIM. (verify hash in TCG event log with hash in RIM)
+   Verify the TCG event log with RIM. (verify hash in TCG event log with hash in RIM)
 
-     TBD
+   TBD
 
 3.1.2.1) Double confirm TCG event log:
    Verify the FSP binary with TCG event log. (verify FSP binary with hash in TCG event log)
