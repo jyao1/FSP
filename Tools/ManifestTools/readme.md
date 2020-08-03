@@ -47,7 +47,11 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 0.2) Prepare RIM configuration INI file.
 
-   The template is at [FspRimTemplate.ini](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspRimTemplate.ini)
+   The sample RimConfig INI file is at [FspRimTemplate.ini](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleConfig/FspRimTemplate.ini)
+
+0.3) Prepare KEY files (private and public).
+
+   The sample test KEY are at [SampleTestKey](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleTestKey). Please do NOT use them in any production.
 
 1) Generate RIM in binary mode
 
@@ -55,25 +59,25 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    To create the SWID tag:
 
-   `FspGenSwid.py genswid -i FspRimTemplate.ini -p Fsp.fd -t SHA_256 -o FspRim.xml`
+   `FspGenSwid.py genswid -i <RimConfig INI file> -p <FSP BIN file> -t <HASH algorithm, such as SHA_256> -o <unsigned SWID XML file>`
 
-   To sign the SWID tag with sample test key:
+   To sign the SWID tag:
 
-   `FspGenSwid.py sign -i FspRim.xml --privatekey TestKey\example.key.pem --cert TestKey\example.cer.pem -o FspRim.sign.xml`
+   `FspGenSwid.py sign -i <unsigned SWID XML file> --privatekey <PEM private key file> --cert <PEM public certificate file> -o <signed SWID XML file>`
 
-   Sample output is at [FspSwidTemplate.xml](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspSwidTemplate.xml)
+   Sample signed SWID XML is at [FspSwidTemplate.xml](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspSwidTemplate.xml)
 
 1.2) CoSWID tag
 
    To create the CoSWID tag:
 
-   `FspGenCoSwid.py gencoswid -i FspRimTemplate.ini -p Fsp.fd -t SHA_256 -o FspRim.cbor`
+   `FspGenCoSwid.py gencoswid -i <RimConfig INI file> -p <FSP BIN file> -t <HASH algorithm, such as SHA_256> -o <unsigned CoSWID CBOR file>`
 
-   To sign the CoSWID tag with sample test key:
+   To sign the CoSWID tag:
 
-   `FspGenCoSwid.py sign -f FspRim.cbor --key TestKey\ecc-private-key.pem --alg ES256 -o FspRim.sign.cbor`
+   `FspGenCoSwid.py sign -f <unsigned CoSWID CBOR file> --key <PEM private key file> --alg <signing algorithm, such as ES256> -o <signed CoSWID CBOR file>`
 
-   Sample output is at [FspCoSwidTemplate.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate.cbor) and binary dump at [FspCoSwidTemplate.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate.json)
+   Sample signed CoSWID CBOR is at [FspCoSwidTemplate.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate.cbor) and binary dump at [FspCoSwidTemplate.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate.json)
 
 2) Generate RIM in separation mode
 
@@ -81,11 +85,11 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 2.1) SWID tag
 
-   Sample output is at [FspSwidTemplate2.xml](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspSwidTemplate2.xml)
+   Sample signed SWID XML is at [FspSwidTemplate2.xml](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspSwidTemplate2.xml)
 
 2.2) CoSWID tag
 
-   Sample output is at [FspCoSwidTemplate2.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate2.cbor) and binary dump at [FspCoSwidTemplate2.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/FspCoSwidTemplate2.json)
+   Sample signed CoSWID CBOR is at [FspCoSwidTemplate2.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate2.cbor) and binary dump at [FspCoSwidTemplate2.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate2.json)
 
 3) Verification
 
@@ -104,11 +108,11 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 3.1.2.1) Double confirm TCG event log:
    Verify the FSP binary with TCG event log. (verify FSP binary with hash in TCG event log)
 
-   `FspTools.py compare --evt evt.bin --fd KABYLAKERVP3.fd`
+   `FspTools.py compare --evt <EventLog binary file> --fd <flash image binary file>`
 
    The EventLog binary can be got from [Tcg2DumpLog](https://github.com/jyao1/EdkiiShellTool/tree/master/EdkiiShellToolPkg/Tcg2DumpLog)
 
-   `Tcg2DumpLog.efi -BIN evt.bin` in UEFI shell environment.
+   `Tcg2DumpLog.efi -BIN <EventLog binary file>` in UEFI shell environment.
 
 3.2) Verify: integrity of RIM
 
@@ -122,17 +126,17 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    To verify the signature:
 
-   `FspGenSwid.py verify -i FspRim.sign.xml --cert TestKey\example.cer.pem`
+   `FspGenSwid.py verify -i <signed SWID XML file> --cert <PEM public certificate file>`
 
 3.2.2.2) CoSWID tag
 
    To verify the signature:
 
-   `FspGenCoSwid.py verify -f FspRim.sign.cbor --key TestKey\ecc-public-key.pem --alg ES256`
+   `FspGenCoSwid.py verify -f <signed CoSWID CBOR file> --key <PEM public key file> --alg <signing algorithm, such as ES256>`
 
    To dump the CBOR:
 
-   `FspGenCoSwid.py dump -f FspRim.sign.cbor`
+   `FspGenCoSwid.py dump -f <signed CoSWID CBOR file>`
 
 ## Feature not implemented yet
 
