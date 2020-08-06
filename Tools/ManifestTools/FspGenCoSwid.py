@@ -30,6 +30,7 @@ import os
 import copy
 import cbor
 import json
+import operator
 import argparse
 import subprocess
 import configparser
@@ -38,6 +39,8 @@ from binascii import hexlify
 from ecdsa.keys import SigningKey, VerifyingKey
 from pycose.cosemessage import CoseMessage
 from pycose.signmessage import SignMessage
+
+FspToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
 
 VersionSchemeMap = {'multipartnumeric': 1, 'multipartnumeric-suffix': 2, 'alphanumeric': 3, 'decimal': 4, 'semver': 16384}
 HashAlgorithmMap = {"SHA_256": 1, "SHA_256_128": 2, "SHA_256_120": 3, "SHA_256_96": 4, "SHA_256_64": 5, "SHA_256_32": 6,
@@ -120,7 +123,7 @@ class GenCbor():
         self.HashType = HashType
         self.MetaAttNonEmptyList = ['colloquialVersion', 'edition', 'product', 'revision']
         self.ReferenceMeasurementAttNonEmptyList = ['BindingSpec', 'BindingSpecVersion', 'PlatformManufacturerStr', 'PlatformManufacturerId',
-                                                    'PlatformModel', 'RIMLinkHash']
+                                                    'PlatformModel']
 
     def buildAttribute(self, dict, tag, value):
         if value != None:
@@ -133,7 +136,7 @@ class GenCbor():
     def validateEntity(self, entity):
         self.validateNonEmpty('name', entity['name'])
         self.validateNonEmpty('role', entity['role'])
-        self.validateNonEmpty('thumbprint', entity['thumbprint'])
+        # self.validateNonEmpty('thumbprint', entity['thumbprint'])
 
     def validateLink(self, link):
         self.validateNonEmpty('href', link['href'])
@@ -426,9 +429,8 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes, Mode):
 
     return swid_builder
 
-def genPayloadBuilder(FileName, HashAlgorithm, Mode):
-    ToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
-    CmdList = ['python', ToolPath, 'hash', '-f', FileName, '-m', Mode]
+def genPayloadBuilder(FileName, HashAlgorithm, Mode):   
+    CmdList = ['python', FspToolPath, 'hash', '-f', FileName, '-m', Mode]
 
     try:
         parseFspImage = subprocess.Popen(CmdList, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -552,6 +554,59 @@ def VerifySignedJwt(FilePath, Key, Algorithm):
 
     print("Signature verification passed")
 
+def VerifyHash(CborFile, TcgEventLog, FlashBinary):
+    Mode = 'binary'
+
+    CborHashDict = {}
+    TcgEventLogDict = {}
+    FlashBinaryDict = {}
+
+    Decode = DecodeCbor(CborFile)
+    if isinstance(Decode.CborData, dict):
+        for item in Decode.SearchKey(Decode.CborData, mapDict['file']):
+            CborHashDict[item[mapDict["fs-name"]]] = item[mapDict["hash"]][1]
+    else:
+        for item in Decode.SearchKey(cbor.loads(Decode.CborData.value[2]), mapDict['file']):
+            CborHashDict[item[mapDict["fs-name"]]] = item[mapDict["hash"]][1]
+
+    # Check mode is binary or separation
+    if len(CborHashDict) == 6:
+        Mode = 'separation'
+
+    GetHashFromTcgCmd = ['python', FspToolPath, 'hash', '-f', TcgEventLog, '--tcg', '-m', Mode]
+    GetHashFromFspCmd = ['python', FspToolPath, 'hash', '-f', FlashBinary, '-m', Mode]
+
+    if FlashBinary != '':
+        GetHash = subprocess.Popen(GetHashFromFspCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, shell=False)
+        msg = GetHash.communicate()
+        FSPComponents = msg[0].decode().split('\r\n')
+        for item in FSPComponents:
+            if item != '':
+                FlashBinaryDict[item.split(' ')[0]] = item.split(' ')[2]
+
+        if operator.eq(CborHashDict, FlashBinaryDict):
+            print('Hash verify pass!')
+        else:
+            print('Hash verify fail!')
+            print('Hash in cbor:\n{}'.format(CborHashDict))
+            print('Hash in flash bianry:\n{}'.format(FlashBinaryDict))
+    else:
+        GetHash = subprocess.Popen(GetHashFromTcgCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, shell=False)
+        msg = GetHash.communicate()
+        FSPComponents = msg[0].decode().split('\r\n')
+        for item in FSPComponents:
+            if item != '':
+                TcgEventLogDict[item.split(' ')[0]] = item.split(' ')[1]
+
+        if operator.eq(CborHashDict, TcgEventLogDict):
+            print('Hash verify pass!')
+        else:
+            print('Hash verify fail!')
+            print('Hash in cbor:\n{}'.format(CborHashDict))
+            print('Hash in TCG event log:\n{}'.format(TcgEventLogDict))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
@@ -584,6 +639,12 @@ if __name__ == "__main__":
     parser_verify.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmMap.keys(), help='Algorithm for signing', required=True)
     parser_verify.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to verify JWT')
 
+    parser_verify_hash = subparsers.add_parser('verify-hash', help='Verify hash in RIM')
+    parser_verify_hash.set_defaults(which='verify-hash')
+    parser_verify_hash.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
+    parser_verify_hash.add_argument('--evt', dest='TcgEventLog', type=str, help='Tcg event log path', default='')
+    parser_verify_hash.add_argument('--bin', dest='FlashBinary', type=str, help='Flash binary path', default='')
+
     args = parser.parse_args()
 
     if args.which == 'gencoswid':
@@ -610,6 +671,18 @@ if __name__ == "__main__":
         if not os.path.exists(args.File):
             raise Exception("ERROR: Could not locate file '%s' !" % args.File)
 
+    if args.which == 'verify-hash':
+        if not os.path.exists(args.File):
+            raise Exception("ERROR: Could not locate file '%s' !" % args.File)
+        if args.TcgEventLog == '' and args.FlashBinary == '':
+            raise Exception("ERROR: At least one of Tcg event log and flash binary be given!")
+        if args.TcgEventLog != '':
+            if not os.path.exists(args.TcgEventLog):
+                raise Exception("ERROR: Could not locate file '%s' !" % args.TcgEventLog)
+        if args.FlashBinary != '':
+            if not os.path.exists(args.FlashBinary):
+                raise Exception("ERROR: Could not locate file '%s' !" % args.FlashBinary)
+
     if args.which == 'gencoswid':
         Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType, args.Mode), args.HashType)
         Encode.genCobor()
@@ -631,3 +704,6 @@ if __name__ == "__main__":
             VerifySignedJwt(args.File, args.PublicKey, args.Algorithm)
         else:
             VerifySignedCbor(args.File, args.PublicKey, args.Algorithm)
+
+    if args.which == 'verify-hash':
+        VerifyHash(args.File, args.TcgEventLog, args.FlashBinary)

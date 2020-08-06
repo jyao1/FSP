@@ -20,11 +20,14 @@
 import os
 import copy
 import argparse
+import operator
 import subprocess
 import configparser
 from lxml import etree
 from signxml import XMLSigner, XMLVerifier, methods
-from xml.dom.minidom import Document
+import xml.dom.minidom as xmldom
+
+FspToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
 
 RoleList      = ['aggregator', 'distributor', 'licensor', 'softwareCreator', 'tagCreator']
 
@@ -87,7 +90,7 @@ class GenXml():
         self.NameSpace = 'http://standards.iso.org/iso/19770/-2/2015/schema.xsd'
         self.NameSpace8060 = 'http://csrc.nist.gov/ns/swid/2015-extensions/1.0'
         self.MetaAttNonEmptyList = ['colloquialVersion', 'edition', 'product', 'revision', 'PlatformManufacturerStr',
-                                    'PlatformManufacturerId', 'PlatformModel', 'BindingSpec', 'BindingSpecVersion', 'RIMLinkHash']
+                                    'PlatformManufacturerId', 'PlatformModel', 'BindingSpec', 'BindingSpecVersion']
         self.MetaAttOfRimList = ['PayloadType', 'PlatformManufacturerStr', 'PlatformManufacturerId', 'PlatformModel',
                                  'PlatformVersion', 'FirmwareManufacturerStr', 'FirmwareManufacturerId', 'FirmwareMode',
                                  'FirmwareVersion', 'BindingSpec', 'BindingSpecVersion', 'pcURIlocal', 'pcURIGlobal', 'RIMLinkHash']
@@ -122,7 +125,7 @@ class GenXml():
     def validateEntity(self, entity):
         self.validateNonEmpty('name', entity['name'])
         self.validateNonEmpty('role', entity['role'])
-        self.validateNonEmpty('thumbprint', entity['thumbprint'])
+        # self.validateNonEmpty('thumbprint', entity['thumbprint'])
 
     def validateLink(self, link):
         self.validateNonEmpty('href', link['href'])
@@ -160,7 +163,7 @@ class GenXml():
 
     def genXml(self):
         self.validate()
-        doc = Document()
+        doc = xmldom.Document()
         root = doc.createElement('SoftwareIdentity')
 
         # Required
@@ -267,8 +270,7 @@ def ParseAndBuildSwidData(IniPath, PayloadFile, HashTypes, Mode):
     return swid_builder
 
 def genPayloadBuilder(FileName, HashAlgorithm, Mode):
-    ToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
-    CmdList = ['python', ToolPath, 'hash', '-f', FileName, '-m', Mode]
+    CmdList = ['python', FspToolPath, 'hash', '-f', FileName, '-m', Mode]
 
     try:
         parseFspImage = subprocess.Popen(CmdList, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
@@ -319,6 +321,63 @@ def VerifySignXmlFile(SignedXmlPath, CertPath):
 
     print("Signature verification passed")
 
+def VerifyHash(XmlFile, HashType, TcgEventLog, FlashBinary):
+    Mode = 'binary'
+
+    CborHashDict = {}
+    TcgEventLogDict = {}
+    FlashBinaryDict = {}
+
+    domobj = xmldom.parse(XmlFile)
+    elementobj = domobj.documentElement
+    payloads = elementobj.getElementsByTagName('Payload')
+    for payload in payloads:
+        directorys = payload.getElementsByTagName('Directory')
+        for directory in directorys:
+            files = directory.getElementsByTagName('File')
+            for file in files:
+                name = file.getAttribute('name')
+                hashValue = file.getAttribute('{}:hash'.format(HashType.replace('_', '')))
+                CborHashDict[name] = hashValue
+
+    # Check mode is binary or separation
+    if len(CborHashDict) == 6:
+        Mode = 'separation'
+
+    GetHashFromTcgCmd = ['python', FspToolPath, 'hash', '-f', TcgEventLog, '--tcg', '-m', Mode]
+    GetHashFromFspCmd = ['python', FspToolPath, 'hash', '-f', FlashBinary, '-m', Mode]
+
+    if FlashBinary != '':
+        GetHash = subprocess.Popen(GetHashFromFspCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, shell=False)
+        msg = GetHash.communicate()
+        FSPComponents = msg[0].decode().split('\r\n')
+        for item in FSPComponents:
+            if item != '':
+                FlashBinaryDict[item.split(' ')[0]] = item.split(' ')[2]
+
+        if operator.eq(CborHashDict, FlashBinaryDict):
+            print('Hash verify pass!')
+        else:
+            print('Hash verify fail!')
+            print('Hash in cbor:\n{}'.format(CborHashDict))
+            print('Hash in flash bianry:\n{}'.format(FlashBinaryDict))
+    else:
+        GetHash = subprocess.Popen(GetHashFromTcgCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, shell=False)
+        msg = GetHash.communicate()
+        FSPComponents = msg[0].decode().split('\r\n')
+        for item in FSPComponents:
+            if item != '':
+                TcgEventLogDict[item.split(' ')[0]] = item.split(' ')[1]
+
+        if operator.eq(CborHashDict, TcgEventLogDict):
+            print('Hash verify pass!')
+        else:
+            print('Hash verify fail!')
+            print('Hash in cbor:\n{}'.format(CborHashDict))
+            print('Hash in TCG event log:\n{}'.format(TcgEventLogDict))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
@@ -339,6 +398,14 @@ if __name__ == "__main__":
     parser_verify = subparsers.add_parser('verify', help='Verify signature of signed Swid XML file')
     parser_verify.add_argument('-i', '--input', dest='SignedXmlPath', type=str, help='Signed Swid XML file path', required=True)
     parser_verify.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
+
+    parser_verify_hash = subparsers.add_parser('verify-hash', help='Verify hash in RIM')
+    parser_verify_hash.set_defaults(which='verify-hash')
+    parser_verify_hash.add_argument('-f', '--file', dest='File', type=str, help='Xml file path', required=True)
+    parser_verify_hash.add_argument('-t', '--hash', dest='HashType', type=str, choices=SupportHashAlgorithmList, help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
+    parser_verify_hash.add_argument('--evt', dest='TcgEventLog', type=str, help='Tcg event log path', default='')
+    parser_verify_hash.add_argument('--bin', dest='FlashBinary', type=str, help='Flash binary path', default='')
+
     args = parser.parse_args()
 
     if args.which == "genswid":
@@ -371,3 +438,16 @@ if __name__ == "__main__":
             raise Exception("ERROR: Could not locate cert file '%s' !" % args.Cert)
 
         VerifySignXmlFile(args.SignedXmlPath, args.Cert)
+    elif args.which == "verify-hash":
+        if not os.path.exists(args.File):
+            raise Exception("ERROR: Could not locate file '%s' !" % args.File)
+        if args.TcgEventLog == '' and args.FlashBinary == '':
+            raise Exception("ERROR: At least one of Tcg event log and flash binary be given!")
+        if args.TcgEventLog != '':
+            if not os.path.exists(args.TcgEventLog):
+                raise Exception("ERROR: Could not locate file '%s' !" % args.TcgEventLog)
+        if args.FlashBinary != '':
+            if not os.path.exists(args.FlashBinary):
+                raise Exception("ERROR: Could not locate file '%s' !" % args.FlashBinary)
+
+        VerifyHash(args.File, args.HashType, args.TcgEventLog, args.FlashBinary)

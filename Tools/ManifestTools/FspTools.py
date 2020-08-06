@@ -584,7 +584,7 @@ class FirmwareDevice:
         self.FdData = bytearray(hfsp.read())
         hfsp.close()
 
-    def ParsePlatformFd(self):
+    def ParseFd(self):
         offset = 0
         fdsize = len(self.FdData)
         self.FvList = []
@@ -594,24 +594,25 @@ class FirmwareDevice:
             if content == b'_FVH':
                 fvOffset = offset - 40
                 fvh = EFI_FIRMWARE_VOLUME_HEADER.from_buffer(self.FdData, fvOffset)
-                if fvOffset + fvh.FvLength < fdsize:
+                if (fvOffset + fvh.FvLength) <= fdsize:
                     fv = FirmwareVolume(fvOffset, self.FdData[fvOffset:fvOffset + fvh.FvLength])
                     fv.ParseFv()
                     self.FvList.append(fv)
             offset += 4
 
-    def ParseFd(self):
-        offset = 0
-        fdsize = len(self.FdData)
-        self.FvList  = []
-        while offset < (fdsize - sizeof (EFI_FIRMWARE_VOLUME_HEADER)):
-            fvh = EFI_FIRMWARE_VOLUME_HEADER.from_buffer (self.FdData, offset)
-            if b'_FVH' != fvh.Signature:
-                raise Exception("ERROR: Invalid FV header !")
-            fv = FirmwareVolume (offset, self.FdData[offset:offset + fvh.FvLength])
-            fv.ParseFv ()
-            self.FvList.append(fv)
-            offset += fv.FvHdr.FvLength
+    # old
+    # def ParseFd(self):
+    #     offset = 0
+    #     fdsize = len(self.FdData)
+    #     self.FvList  = []
+    #     while offset < (fdsize - sizeof (EFI_FIRMWARE_VOLUME_HEADER)):
+    #         fvh = EFI_FIRMWARE_VOLUME_HEADER.from_buffer (self.FdData, offset)
+    #         if b'_FVH' != fvh.Signature:
+    #             raise Exception("ERROR: Invalid FV header !")
+    #         fv = FirmwareVolume (offset, self.FdData[offset:offset + fvh.FvLength])
+    #         fv.ParseFv ()
+    #         self.FvList.append(fv)
+    #         offset += fv.FvHdr.FvLength
 
     def CheckFsp (self):
         if len(self.FspList) == 0:
@@ -876,36 +877,6 @@ def RebaseFspBin (FspBinary, FspComponent, FspBase, OutputFile):
     fd.write(newfspbin)
     fd.close()
 
-def HashFspBin (FspBinary, Mode):
-    fd = FirmwareDevice(0, FspBinary)
-    fd.ParseFd()
-    fd.ParseFsp()
-
-    FspAddr = 0
-    if Mode == 'binary':
-        for fsp in fd.FspList:
-            ImageSize = fsp.Fih.ImageSize
-            fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
-
-            hash_out = hashlib.sha256(fspData).hexdigest()
-            print("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
-            FspAddr += ImageSize
-    else:
-        for fsp in fd.FspList:
-            ImageSize = fsp.Fih.ImageSize
-            CfgRegionOffset = fsp.Fih.CfgRegionOffset
-            CfgRegionSize = fsp.Fih.CfgRegionSize
-
-            fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
-            UDP_Data = fspData[CfgRegionOffset: (CfgRegionOffset + CfgRegionSize)]
-            fspData = fspData.replace(UDP_Data, b"")
-
-            code_hash_out = hashlib.sha256(fspData).hexdigest()
-            udp_hash_out = hashlib.sha256(UDP_Data).hexdigest()
-            print("FSP%s-Code %s %s" % (fsp.Type, len(fspData), code_hash_out))
-            print("FSP%s-Udp %s %s" % (fsp.Type, len(UDP_Data), udp_hash_out))
-            FspAddr += ImageSize
-
 # def GenFspManifest (FspBinary, SvnNum, OutputFile):
 #     fd = FirmwareDevice(0, FspBinary)
 #     fd.ParseFd()
@@ -1117,24 +1088,27 @@ def HashFspBin (FspBinary, Mode):
 #     fd.write(FspManifestBuffer)
 #     fd.close()
 
-class CompareFspComponentHash():
-    def __init__(self, bin_path, fd_path):
-        self.BinPath = bin_path
-        self.FdPath  = fd_path
+class FspComponent():
+    def __init__(self, Mode):
+        self.Mode = Mode
+        if self.Mode == 'binary':
+            self.EventLogHashDict = {'FSPT': '', 'FSPM': '', 'FSPS': ''}
+            self.FlashBinHashDict = {'FSPT': '', 'FSPM': '', 'FSPS': ''}
+        else:
+            self.EventLogHashDict = {'FSPT-Code': '', 'FSPT-Udp': '', 'FSPM-Code': '', 'FSPM-Udp': '',
+                                     'FSPS-Code': '', 'FSPS-Udp': ''}
+            self.FlashBinHashDict = {'FSPT-Code': '', 'FSPT-Udp': '', 'FSPM-Code': '', 'FSPM-Udp': '',
+                                     'FSPS-Code': '', 'FSPS-Udp': ''}
 
-        self.HashDict1 = {'FSPT': '', 'FSPM': '', 'FSPS': ''}
-        self.HashDict2 = {'FSPT': '', 'FSPM': '', 'FSPS': ''}
-
-    def GetHashSizeFromAlgo(self, HashAlgo):
+    def __GetHashSizeFromAlgo(self, HashAlgo):
         for item in HashInfo:
             if HashAlgo == item[0]:
                 return item[1]
         return 0
 
-    def GetPcrEvent2Size(self, PcrEvent2Hdr, Buffer, Offset):
-        DigestCount = PcrEvent2Hdr.digests.count
+    def __GetPcrEvent2Size(self, PcrEvent2Hdr, Buffer, Offset):
         HashAlgo = PcrEvent2Hdr.digests.digests[0].hashAlg
-        DigestSize = self.GetHashSizeFromAlgo(HashAlgo)
+        DigestSize = self.__GetHashSizeFromAlgo(HashAlgo)
         DigestOffset = Offset + 3 * sizeof(c_uint32) + sizeof(c_uint16)
         Digest = Buffer[DigestOffset: DigestOffset + DigestSize]
 
@@ -1144,16 +1118,18 @@ class CompareFspComponentHash():
         EventDataOffset = EventDataSizeOffset + sizeof(c_uint32)
         if PcrEvent2Hdr.eventType == EV_EFI_PLATFORM_FIRMWARE_BLOB2:
             BlobDescriptionSize = c_uint8.from_buffer(Buffer, EventDataOffset).value
-            BlobDescription = Buffer[EventDataOffset + sizeof(c_uint8): EventDataOffset + sizeof(c_uint8) + BlobDescriptionSize].decode()
-            for key in self.HashDict1.keys():
+            BlobDescription = Buffer[EventDataOffset + sizeof(c_uint8): EventDataOffset + sizeof(
+                c_uint8) + BlobDescriptionSize].decode()
+            for key in self.EventLogHashDict.keys():
                 if BlobDescription.startswith(key):
-                    self.HashDict1[key] = bytearray.hex(Digest)
+                    self.EventLogHashDict[key] = bytearray.hex(Digest)
+                    print(key, bytearray.hex(Digest))
 
         Event2Size = EventDataOffset + EventDataSize - Offset
         return Event2Size
 
-    def GetHashFromBin(self):
-        with open(self.BinPath, 'rb') as f:
+    def GetHashFromTcgEventLog(self, TcgEventLogBinPath):
+        with open(TcgEventLogBinPath, 'rb') as f:
             BinData = bytearray(f.read())
 
         offset = 0
@@ -1165,39 +1141,61 @@ class CompareFspComponentHash():
                 offset += sizeof(tdTCG_PCR_EVENT_HDR) + PcrEventHdr.eventDataSize
             else:
                 PcrEvent2Hdr = tdTCG_PCR_EVENT2_HDR.from_buffer(BinData, offset)
-                offset += self.GetPcrEvent2Size(PcrEvent2Hdr, BinData, offset)
+                offset += self.__GetPcrEvent2Size(PcrEvent2Hdr, BinData, offset)
+        return self.EventLogHashDict
 
-
-    def GetHashFromFd(self):
-        fd = FirmwareDevice(0, self.FdPath)
-        fd.ParsePlatformFd()
+    def GetHashFromFlashBin(self, FlashBinPath):
+        fd = FirmwareDevice(0, FlashBinPath)
+        fd.ParseFd()
         fd.ParseFsp()
 
-        for fsp in fd.FspList:
-            ImageSize = fsp.Fih.ImageSize
-            CfgRegionOffset = fsp.Fih.CfgRegionOffset
-            CfgRegionSize = fsp.Fih.CfgRegionSize
 
-            FspAddr = fsp.Offset
-            fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
+        if self.Mode == 'binary':
+            for fsp in fd.FspList:
+                ImageSize = fsp.Fih.ImageSize
+                FspAddr = fsp.Offset
+                fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
 
-            hash_out = hashlib.sha256(fspData).hexdigest()
-            self.HashDict2['FSP' + fsp.Type] = hash_out
+                hash_out = hashlib.sha256(fspData).hexdigest()
+                print("FSP%s %s %s" % (fsp.Type, ImageSize, hash_out))
+                for key in self.FlashBinHashDict.keys():
+                    if key == "FSP{}".format(fsp.Type):
+                        self.FlashBinHashDict[key] = hash_out
+                FspAddr += ImageSize
+        else:
+            for fsp in fd.FspList:
+                ImageSize = fsp.Fih.ImageSize
+                CfgRegionOffset = fsp.Fih.CfgRegionOffset
+                CfgRegionSize = fsp.Fih.CfgRegionSize
 
-    def Compare(self):
-        self.GetHashFromBin()
-        self.GetHashFromFd()
-        
-        print(self.HashDict1)
-        print(self.HashDict2)
-            
-        if operator.eq(self.HashDict1, self.HashDict2):
+                FspAddr = fsp.Offset
+                fspData = fd.FdData[FspAddr: (FspAddr + ImageSize)]
+                UDP_Data = fspData[CfgRegionOffset: (CfgRegionOffset + CfgRegionSize)]
+                fspData = fspData.replace(UDP_Data, b"")
+
+                code_hash_out = hashlib.sha256(fspData).hexdigest()
+                udp_hash_out = hashlib.sha256(UDP_Data).hexdigest()
+                print("FSP%s-Code %s %s" % (fsp.Type, len(fspData), code_hash_out))
+                print("FSP%s-Udp %s %s" % (fsp.Type, len(UDP_Data), udp_hash_out))
+                for key in self.FlashBinHashDict.keys():
+                    if key == "FSP{}-Code".format(fsp.Type):
+                        self.FlashBinHashDict[key] = code_hash_out
+                    if key == "FSP{}-Udp".format(fsp.Type):
+                        self.FlashBinHashDict[key] = udp_hash_out
+                FspAddr += ImageSize
+
+        return self.FlashBinHashDict
+
+    def Compare(self, TcgEventLogBinPath, FlashBinPath):
+        self.GetHashFromTcgEventLog(TcgEventLogBinPath)
+        self.GetHashFromFlashBin(FlashBinPath)
+
+        if operator.eq(self.EventLogHashDict, self.FlashBinHashDict):
             print('Compare FSP component hash bettween Tcg event log binary and platform image [PASS]')
         else:
             print('Compare FSP component hash bettween Tcg event log binary and platform image [FAIL]')
-            
 
-def main ():
+def main():
     parser     = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
 
@@ -1208,9 +1206,10 @@ def main ():
     parser_rebase.add_argument('-b',  '--newbase', dest='FspBase', nargs='+', type=str, help='Rebased FSP binary file name', default = '', required = True)
     parser_rebase.add_argument('-o',  '--outfile', dest='OutputFile', type=str, help='Rebased FSP binary file name', default = '')
 
-    parser_hash = subparsers.add_parser('hash',  help='generate hash(sha256) for FSP image')
+    parser_hash = subparsers.add_parser('hash',  help='generate hash(sha256) for FSP image or get hash from TCG event log')
     parser_hash.set_defaults(which='hash')
-    parser_hash.add_argument('-f',  '--fspbin' , dest='FspBinary', type=str, help='FSP binary file path', required = True)
+    parser_hash.add_argument('-f',  '--file', dest='File', type=str, help='FSP binary file path or TCG event log path', required = True)
+    parser_hash.add_argument('--tcg', dest='TCG', action='store_true', help='Flag to check whether the file is Tcg event log')
     parser_hash.add_argument('-m', '--mode', choices=['binary', 'separation'], dest='Mode', type=str, help='Different mode to generate hash for FSP image', default='binary')
 
     # parser_manifest = subparsers.add_parser('manifest', help='generate FSP manifest')
@@ -1237,6 +1236,7 @@ def main ():
     parser_compare.set_defaults(which='compare')
     parser_compare.add_argument('--evt', dest='EventLogBin', type=str, help='Event log binary file path', required=True)
     parser_compare.add_argument('--fd', dest='PlatformImage', type=str, help='Platform image file path', required=True)
+    parser_compare.add_argument('-m', '--mode', choices=['binary', 'separation'], dest='Mode', type=str, help='Different mode to generate hash for FSP image', default='binary')
 
     parser_info = subparsers.add_parser('info',  help='display FSP information')
     parser_info.set_defaults(which='info')
@@ -1244,9 +1244,13 @@ def main ():
 
     args = parser.parse_args()
 
-    if args.which in ['rebase', 'hash', 'manifest', 'info']:
+    if args.which in ['rebase', 'manifest', 'info']:
         if not os.path.exists(args.FspBinary):
             raise Exception ("ERROR: Could not locate FSP binary file '%s' !" % args.FspBinary)
+
+    if args.which == 'hash':
+        if not os.path.exists(args.File):
+            raise Exception ("ERROR: Could not locate FSP binary file '%s' !" % args.File)
 
     # if args.which == 'encode':
     #     if not os.path.exists(args.FspManifest):
@@ -1271,7 +1275,11 @@ def main ():
     if args.which == 'rebase':
         RebaseFspBin(args.FspBinary, args.FspComponent, args.FspBase, args.OutputFile)
     elif args.which == 'hash':
-        HashFspBin(args.FspBinary, args.Mode)
+        Hash = FspComponent(args.Mode)
+        if args.TCG:
+            Hash.GetHashFromTcgEventLog(args.File)
+        else:
+            Hash.GetHashFromFlashBin(args.File)
     # elif args.which == 'manifest':
     #     GenFspManifest (args.FspBinary, args.SVN, args.OutputFile)
     # elif args.which == 'encode':
@@ -1281,8 +1289,8 @@ def main ():
     elif args.which == 'info':
         ShowFspInfo(args.FspBinary)
     elif args.which == 'compare':
-        comp = CompareFspComponentHash(args.EventLogBin, args.PlatformImage)
-        comp.Compare()
+        comp = FspComponent(args.Mode)
+        comp.Compare(args.EventLogBin, args.PlatformImage)
     else:
         parser.print_help()
 
