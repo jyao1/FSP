@@ -98,12 +98,24 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 3.1.1) Without TCG event log:
    Verify the FSP binary hash (verify FSP binary with hash in RIM)
 
-   TBD
+   For SWID：
+   
+   `FspGenSwid.py verify-hash -f <SWID XML file> -t <HASH algorithm, such as SHA_256> --fd <flash image binary file>`
+   
+   For CoSWID:
+   
+   `FspGenCoSwid.py verify-hash -f <CoSWID CBOR file> --fd <flash image binary file>`
 
 3.1.2) With TCG event log:
    Verify the TCG event log with RIM. (verify hash in TCG event log with hash in RIM)
 
-   TBD
+   For SWID：
+   
+   `FspGenSwid.py verify-hash -f <SWID XML file> -t <HASH algorithm, such as SHA_256> --evt <EventLog binary file>`
+   
+   For CoSWID:
+   
+   `FspGenCoSwid.py verify-hash -f <CoSWID CBOR file> --evt <EventLog binary file>`
 
 3.1.2.1) Double confirm TCG event log:
    Verify the FSP binary with TCG event log. (verify FSP binary with hash in TCG event log)
