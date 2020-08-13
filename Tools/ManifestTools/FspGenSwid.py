@@ -298,26 +298,29 @@ def genPayloadBuilder(FileName, HashAlgorithm, Mode):
 
     return db
 
-def SignXmlFile(XmlPath, KeyPath, CertPath, SignedXmlPath):
+def SignXmlFile(XmlPath, KeyPath, CertList, SignedXmlPath, Passwd):
     with open(XmlPath, 'rb') as f:
         data_to_sign = f.read()
 
-    key, cert = [open(path).read() for path in [KeyPath, CertPath]]
+    key = open(KeyPath).read()
+    cert = []
+    for cer in CertList:
+        cert.append(open(cer).read())
 
     root = etree.fromstring(data_to_sign)
-    signed_root = XMLSigner(method=methods.enveloping).sign(root, key=key, cert=cert)
+    signed_root = XMLSigner(method=methods.enveloping).sign(root, key=key, cert=cert, passphrase=Passwd.encode())
 
     etree.ElementTree(signed_root).write(SignedXmlPath)
 
-def VerifySignXmlFile(SignedXmlPath, CertPath):
-    with open(CertPath, 'r') as f:
-        cert = f.read()
-
+def VerifySignXmlFile(SignedXmlPath, CertPath, Issued):
     with open(SignedXmlPath, 'rb') as f:
         SignedXmlData = etree.fromstring(f.read())
 
     # Verify signature
-    XMLVerifier().verify(SignedXmlData, x509_cert=cert).signed_xml
+    if Issued:
+        XMLVerifier().verify(SignedXmlData, require_x509=True, ca_pem_file=CertPath).signed_xml
+    else:
+        XMLVerifier().verify(SignedXmlData, require_x509=True, x509_cert=open(CertPath).read()).signed_xml
 
     print("Signature verification passed")
 
@@ -392,11 +395,13 @@ if __name__ == "__main__":
     parser_sign = subparsers.add_parser('sign', help='Sign Swid XML file')
     parser_sign.add_argument('-i', '--input', dest='XmlPath', type=str, help='Swid XML file path', required=True)
     parser_sign.add_argument('--privatekey', dest='PrivateKey', type=str, help='Private key for signing (PEM format)', required=True)
-    parser_sign.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
+    parser_sign.add_argument('--cert', dest='Cert', type=str, nargs='+', help='Cert file path (PEM format)', required=True)
+    parser_sign.add_argument('--passwd', dest='Password', type=str, help='Password to decrypt the key', default=None)
     parser_sign.add_argument('-o', '--output', dest='SignedXmlPath', type=str, help='SignedXml file path', required=True)
 
     parser_verify = subparsers.add_parser('verify', help='Verify signature of signed Swid XML file')
     parser_verify.add_argument('-i', '--input', dest='SignedXmlPath', type=str, help='Signed Swid XML file path', required=True)
+    parser_verify.add_argument('--issued', dest='Issued', action='store_true', help='Is cert issued')
     parser_verify.add_argument('--cert', dest='Cert', type=str, help='Cert file path (PEM format)', required=True)
 
     parser_verify_hash = subparsers.add_parser('verify-hash', help='Verify hash in RIM')
@@ -424,20 +429,21 @@ if __name__ == "__main__":
             raise Exception("ERROR: Could not locate Xml file '%s' !" % args.XmlPath)
         if not os.path.exists(args.PrivateKey):
             raise Exception("ERROR: Could not locate private key file '%s' !" % args.PrivateKey)
-        if not os.path.exists(args.Cert):
-            raise Exception("ERROR: Could not locate cert file '%s' !" % args.Cert)
+        for cert in args.Cert:
+            if not os.path.exists(cert):
+                raise Exception("ERROR: Could not locate cert file '%s' !" % cert)
         if os.path.isabs(args.SignedXmlPath):
             if not os.path.exists(os.path.dirname(args.SignedXmlPath)):
                 os.makedirs(os.path.dirname(args.SignedXmlPath))
 
-        SignXmlFile(args.XmlPath, args.PrivateKey, args.Cert, args.SignedXmlPath)
+        SignXmlFile(args.XmlPath, args.PrivateKey, args.Cert, args.SignedXmlPath, args.Password)
     elif args.which == "verify":
         if not os.path.exists(args.SignedXmlPath):
             raise Exception("ERROR: Could not locate signed Xml file '%s' !" % args.SignedXmlPath)
         if not os.path.exists(args.Cert):
             raise Exception("ERROR: Could not locate cert file '%s' !" % args.Cert)
 
-        VerifySignXmlFile(args.SignedXmlPath, args.Cert)
+        VerifySignXmlFile(args.SignedXmlPath, args.Cert, args.Issued)
     elif args.which == "verify-hash":
         if not os.path.exists(args.File):
             raise Exception("ERROR: Could not locate file '%s' !" % args.File)

@@ -63,7 +63,7 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    To sign the SWID tag:
 
-   `FspGenSwid.py sign -i <unsigned SWID XML file> --privatekey <PEM private key file> --cert <PEM public certificate file> -o <signed SWID XML file>`
+   `FspGenSwid.py sign -i <unsigned SWID XML file> --privatekey <PEM private key file> --cert [PEM public certificate file ...] [--passwd <Password to decrypt the key>] -o <signed SWID XML file>`
 
    Sample signed SWID XML is at [FspSwidTemplate.xml](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspSwidTemplate.xml)
 
@@ -130,6 +130,16 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 3.2.1) verify the certChain by using RootCert (verify RIM with RootCert)
 
+3.2.1.1) SWID tag
+
+   To verify the signature:
+  
+   `FspGenSwid.py verify -i <signed SWID XML file> --cert <Issued PEM public certificate file> --issued`
+
+3.2.1.2) CoSWID tag:
+    
+   To verify the signature:
+   
    TBD
 
 3.2.2) Verify the signature of data by using LeafCert (verify RIM with RootCert)
