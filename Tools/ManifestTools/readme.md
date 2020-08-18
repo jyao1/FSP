@@ -75,7 +75,7 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    To sign the CoSWID tag:
 
-   `FspGenCoSwid.py sign -f <unsigned CoSWID CBOR file> --key <PEM private key file> --alg <signing algorithm, such as ES256> -o <signed CoSWID CBOR file>`
+   `FspGenCoSwid.py sign -f <unsigned CoSWID CBOR file> --key <PEM private key file> --kid <User input KID> --alg <signing algorithm, such as ES256> -o <signed CoSWID CBOR file>`
 
    Sample signed CoSWID CBOR is at [FspCoSwidTemplate.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate.cbor) and binary dump at [FspCoSwidTemplate.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate.json)
 

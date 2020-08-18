@@ -136,7 +136,6 @@ class GenCbor():
     def validateEntity(self, entity):
         self.validateNonEmpty('name', entity['name'])
         self.validateNonEmpty('role', entity['role'])
-        # self.validateNonEmpty('thumbprint', entity['thumbprint'])
 
     def validateLink(self, link):
         self.validateNonEmpty('href', link['href'])
@@ -218,11 +217,11 @@ class GenCbor():
                 entity_dict[mapDict['role']] = []
                 for role in entity['role'].split(' '):
                     entity_dict[mapDict['role']].append(RoleMap[role])
-                entity_dict[mapDict['thumbprint']] = []
-                # hash-alg-id
-                entity_dict[mapDict['thumbprint']].append(HashAlgorithmMap[self.HashType])
-                # hash-value
-                entity_dict[mapDict['thumbprint']].append(entity['thumbprint'])
+                # entity_dict[mapDict['thumbprint']] = []
+                # # hash-alg-id
+                # entity_dict[mapDict['thumbprint']].append(HashAlgorithmMap[self.HashType])
+                # # hash-value
+                # entity_dict[mapDict['thumbprint']].append(entity['thumbprint'])
                 # optional
                 if entity['regid'] != None:
                     entity_dict[mapDict['reg-id']] = entity['regid']
@@ -474,7 +473,7 @@ def DecodeJwt(FilePath):
     print('signing key: {}'.format(signing_input))
     print('signature: {}'.format(signature))
 
-def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
+def SignCbor(FilePath, Key, Algorithm, kid, SignedCborPath):
     with open(FilePath, 'rb') as f:
         cborData = f.read()
 
@@ -490,7 +489,7 @@ def SignCbor(FilePath, Key, Algorithm, SignedCborPath):
     #     /signature/
     #     ]
 
-    (pHeader, unpHeader, payload, pSigner, unpSigner) = [{}, {}, cborData, {"alg": Algorithm}, {"kid": "11"}]
+    (pHeader, unpHeader, payload, pSigner, unpSigner) = [{}, {}, cborData, {"alg": Algorithm}, {"kid": kid}]
 
     sign_msg = SignMessage()
 
@@ -612,12 +611,12 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(title='commands', dest="which")
 
     parser_gencoswid = subparsers.add_parser('gencoswid', help='Generate CoSwid file in CBOR format')
-    parser_gencoswid .set_defaults(which='gencoswid')
-    parser_gencoswid .add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
-    parser_gencoswid .add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
+    parser_gencoswid.set_defaults(which='gencoswid')
+    parser_gencoswid.add_argument('-i', '--inifile', dest='IniPath', type=str, help='Ini configuration file path', required=True)
+    parser_gencoswid.add_argument('-p', '--payload', dest='Payload', type=str, help="Payload File name", required=True)
     parser_gencoswid.add_argument('-m', '--mode', choices=['binary', 'separation'], dest='Mode', type=str, help='Different mode to generate hash for FSP image', default='binary')
-    parser_gencoswid .add_argument('-t', '--hash', dest='HashType',  type=str, choices=SupportHashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
-    parser_gencoswid .add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Cbor file path', default='', required=True)
+    parser_gencoswid.add_argument('-t', '--hash', dest='HashType',  type=str, choices=SupportHashAlgorithmMap.keys(), help="Hash types {}".format(str(HashAlgorithmMap.keys())), default='SHA_256')
+    parser_gencoswid.add_argument('-o', '--outfile', dest='OutputFile', type=str, help='Output Cbor file path', default='', required=True)
 
     parser_dump = subparsers.add_parser('dump', help='dump CoSwid CBOR file')
     parser_dump.set_defaults(which='dump')
@@ -628,6 +627,7 @@ if __name__ == "__main__":
     parser_sign.set_defaults(which='sign')
     parser_sign.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
     parser_sign.add_argument('--key', dest='PrivateKey', type=str, help='Private key for signing', required=True)
+    parser_sign.add_argument('--kid', dest='kid', type=str, help='kid for signing', required=True)
     parser_sign.add_argument('--alg', dest='Algorithm', type=str, choices=SignSupportAlgorithmMap.keys(), help='Algorithm for signing', required=True)
     parser_sign.add_argument('--jws', dest='JWS', action='store_true', help='Flag used to enable use JWS to sign cbor')
     parser_sign.add_argument('-o', '--output', dest='SignedCborPath', type=str, help='SignedCbor file path COSE/JWS', required=True)
@@ -697,7 +697,7 @@ if __name__ == "__main__":
         if args.JWS:
             SignCborByJws(args.File, args.PrivateKey, args.Algorithm, args.SignedCborPath)
         else:
-            SignCbor(args.File, args.PrivateKey, args.Algorithm, args.SignedCborPath)
+            SignCbor(args.File, args.PrivateKey, args.Algorithm, args.kid, args.SignedCborPath)
 
     if args.which == 'verify':
         if args.JWS:

@@ -23,6 +23,7 @@ import argparse
 import operator
 import subprocess
 import configparser
+import hashlib
 from lxml import etree
 from signxml import XMLSigner, XMLVerifier, methods
 import xml.dom.minidom as xmldom
@@ -186,7 +187,7 @@ class GenXml():
             for entity in self.SWIDBuilder.entities:
                 EntityElement = doc.createElement('Entity')
                 for att in entity.keys():
-                    if entity[att] != None:
+                    if entity[att] != '':
                         EntityElement.setAttribute(att, entity[att])
 
                 root.appendChild(EntityElement)
@@ -195,7 +196,7 @@ class GenXml():
             for link in self.SWIDBuilder.links:
                 LinkElement = doc.createElement('Link')
                 for att in link.keys():
-                    if link[att] != None:
+                    if link[att] != '':
                         LinkElement.setAttribute(att, link[att])
 
                 root.appendChild(LinkElement)
@@ -205,9 +206,9 @@ class GenXml():
                 MetaElement = doc.createElement('Meta')
                 MetaElement.setAttributeNS(self.NameSpace, 'xmlns:rim', 'https://trustedcomputinggroup.org/wp-content/uploads/TCG_RIM_Model')
                 for att in meta.keys():
-                    if meta[att] != None and att not in self.MetaAttOfRimList:
+                    if meta[att] != '' and att not in self.MetaAttOfRimList:
                         MetaElement.setAttribute(att, meta[att])
-                    elif meta[att] != None and att in self.MetaAttOfRimList:
+                    elif meta[att] != '' and att in self.MetaAttOfRimList:
                         MetaElement.setAttribute('rim:' + att, meta[att])
 
                 root.appendChild(MetaElement)
@@ -307,8 +308,14 @@ def SignXmlFile(XmlPath, KeyPath, CertList, SignedXmlPath, Passwd):
     for cer in CertList:
         cert.append(open(cer).read())
 
+    # Add attribute thumbprint in Entity
     root = etree.fromstring(data_to_sign)
-    signed_root = XMLSigner(method=methods.enveloping).sign(root, key=key, cert=cert, passphrase=Passwd.encode())
+    children = root.getchildren()
+    for child in children:
+        if child.tag.endswith('Entity'):
+            child.attrib['thumbprint'] = hashlib.sha256(bytes(cert[0], encoding="utf8")).hexdigest()
+
+    signed_root = XMLSigner(method=methods.enveloping).sign(root, key=key, cert=cert, passphrase=Passwd.encode() if Passwd != None else Passwd)
 
     etree.ElementTree(signed_root).write(SignedXmlPath)
 
@@ -395,7 +402,7 @@ if __name__ == "__main__":
     parser_sign = subparsers.add_parser('sign', help='Sign Swid XML file')
     parser_sign.add_argument('-i', '--input', dest='XmlPath', type=str, help='Swid XML file path', required=True)
     parser_sign.add_argument('--privatekey', dest='PrivateKey', type=str, help='Private key for signing (PEM format)', required=True)
-    parser_sign.add_argument('--cert', dest='Cert', type=str, nargs='+', help='Cert file path (PEM format)', required=True)
+    parser_sign.add_argument('--cert', dest='Cert', type=str, nargs='+', help='Cert files path (PEM format), put leaf cert in the first position', required=True)
     parser_sign.add_argument('--passwd', dest='Password', type=str, help='Password to decrypt the key', default=None)
     parser_sign.add_argument('-o', '--output', dest='SignedXmlPath', type=str, help='SignedXml file path', required=True)
 
