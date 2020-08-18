@@ -138,9 +138,7 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 3.2.1.2) CoSWID tag:
     
-   To verify the signature:
-   
-   TBD
+   Unsupported
 
 3.2.2) Verify the signature of data by using LeafCert (verify RIM with RootCert)
 
@@ -161,12 +159,6 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
    `FspGenCoSwid.py dump -f <signed CoSWID CBOR file>`
 
 ## Feature not implemented yet
-
-1) thumbprint
-
-2) Support certificate chain
-
-3) CoSWID keyid
 
 ## Known limitation
 This package is only the sample code to show the concept.
