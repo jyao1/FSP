@@ -122,9 +122,13 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    `FspTools.py compare --evt <EventLog binary file> --fd <flash image binary file>`
 
-   The EventLog binary can be got from [Tcg2DumpLog](https://github.com/jyao1/EdkiiShellTool/tree/master/EdkiiShellToolPkg/Tcg2DumpLog)
+   The EventLog binary can be got from [Tcg2DumpLog](https://github.com/jyao1/EdkiiShellTool/tree/master/EdkiiShellToolPkg/Tcg2DumpLog) in UEFI.
 
    `Tcg2DumpLog.efi -BIN <EventLog binary file>` in UEFI shell environment.
+
+   The EventLog can be got from Windows via [Tbsi_Get_TCG_Log](https://docs.microsoft.com/en-us/windows/win32/api/tbs/nf-tbs-tbsi_get_tcg_log) function.
+
+   The EventLog can be got from Linux via `/sys/kernel/security/tpm0/binary_bios_measurements`, or via [tpm2-tools](https://github.com/tpm2-software/tpm2-tools)
 
 3.2) Verify: integrity of RIM
 
