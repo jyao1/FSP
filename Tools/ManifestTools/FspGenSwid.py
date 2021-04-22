@@ -18,6 +18,7 @@
 ##
 
 import os
+import platform
 import copy
 import argparse
 import operator
@@ -27,6 +28,13 @@ import hashlib
 from lxml import etree
 from signxml import XMLSigner, XMLVerifier, methods
 import xml.dom.minidom as xmldom
+
+osType = platform.system()
+
+if osType == 'Windows':
+    eol = '\r\n'
+elif osType == 'Linux':
+    eol = '\n'
 
 FspToolPath = os.path.join(os.path.dirname(__file__), 'FspTools.py')
 
@@ -283,7 +291,7 @@ def genPayloadBuilder(FileName, HashAlgorithm, Mode):
             print(msg[1].decode())
             os._exit(1)
 
-    FSPComponents = msg[0].decode().split('\r\n')
+    FSPComponents = msg[0].decode().split(eol)
 
     db = copy.deepcopy(DirectoryBuilder)
     db['name'] = 'FSP binary'
@@ -361,7 +369,7 @@ def VerifyHash(XmlFile, HashType, TcgEventLog, FlashBinary):
         GetHash = subprocess.Popen(GetHashFromFspCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, shell=False)
         msg = GetHash.communicate()
-        FSPComponents = msg[0].decode().split('\r\n')
+        FSPComponents = msg[0].decode().split(eol)
         for item in FSPComponents:
             if item != '':
                 FlashBinaryDict[item.split(' ')[0]] = item.split(' ')[2]
@@ -376,7 +384,7 @@ def VerifyHash(XmlFile, HashType, TcgEventLog, FlashBinary):
         GetHash = subprocess.Popen(GetHashFromTcgCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, shell=False)
         msg = GetHash.communicate()
-        FSPComponents = msg[0].decode().split('\r\n')
+        FSPComponents = msg[0].decode().split(eol)
         for item in FSPComponents:
             if item != '':
                 TcgEventLogDict[item.split(' ')[0]] = item.split(' ')[1]

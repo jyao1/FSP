@@ -1119,7 +1119,7 @@ class FspComponent():
         if PcrEvent2Hdr.eventType == EV_EFI_PLATFORM_FIRMWARE_BLOB2:
             BlobDescriptionSize = c_uint8.from_buffer(Buffer, EventDataOffset).value
             BlobDescription = Buffer[EventDataOffset + sizeof(c_uint8): EventDataOffset + sizeof(
-                c_uint8) + BlobDescriptionSize].decode()
+                c_uint8) + BlobDescriptionSize].decode(encoding="ISO-8859-1")
             for key in self.EventLogHashDict.keys():
                 if BlobDescription.startswith(key):
                     self.EventLogHashDict[key] = bytearray.hex(Digest)
