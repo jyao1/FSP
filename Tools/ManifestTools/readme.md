@@ -164,6 +164,12 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
 ## Feature not implemented yet
 
+   Define an [OPA](https://www.openpolicyagent.org/) [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) policy.
+
+   Use [CoMID](https://ietf-rats.github.io/draft-birkholz-rats-corim/draft-birkholz-rats-corim.html) to define the firmware component.
+
+   Use [CoRIM](https://ietf-rats.github.io/draft-birkholz-rats-corim/draft-birkholz-rats-corim.html) to describe the reference integrity manifest.
+
 ## Known limitation
 This package is only the sample code to show the concept.
 It does not have a full validation such as robustness functional test. It does not meet the production quality yet.
