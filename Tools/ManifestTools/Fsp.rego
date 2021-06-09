@@ -1,6 +1,6 @@
 # OPA playground: https://play.openpolicyagent.org/
 
-package rats.verifier.poc
+package fsp
 
 default FSPS_HASH_CHECK = false
 FSPS_HASH_CHECK {

@@ -162,6 +162,47 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    `FspGenCoSwid.py dump -f <signed CoSWID CBOR file>`
 
+3.3) Verify: FSP binary in flash == FSP RIM == TCG event log with OPA
+
+3.3.1) Without TCG event log:
+   Verify the FSP binary hash (verify FSP binary with hash in RIM)
+
+   For CoSWID:
+   
+   `FspGenCoSwid.py opa -f <CoSWID CBOR file> --fd <flash image binary file> -o <OPA input file>`
+
+   Continue step 3.3.3
+
+3.3.2) With TCG event log:
+   Verify the TCG event log with RIM. (verify hash in TCG event log with hash in RIM)
+
+   For CoSWID:
+   
+   `FspGenCoSwid.py opa -f <CoSWID CBOR file> --evt <EventLog binary file> -o <OPA input file>`
+
+   Continue step 3.3.3
+
+3.3.3) Use OPA to verify hash:
+    
+    Evaluate hash in TCG event log or FSP binary with hash in RIM on "The Rego Playground" portal:
+
+    Open https://play.openpolicyagent.org/
+
+    Copy policy content in Fsp.rego to left window
+
+    Copy content in <OPA input file> to 'Input' window
+
+    Click 'Evaluate' button, then check result in 'Output' window
+   
+  - 
+
+    Evaluate hash in TCG event log or FSP binary with hash in RIM with OPA binary:
+
+    Refer https://www.openpolicyagent.org/docs/latest/#1-download-opa to download OPA
+
+    `opa -i <OPA input file> -d Fsp.rego "date.fsp"`
+
+
 ## Feature not implemented yet
 
    Define an [OPA](https://www.openpolicyagent.org/) [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) policy.
