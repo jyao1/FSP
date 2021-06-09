@@ -322,11 +322,75 @@ class DecodeCbor():
         else:
             self.DecodeSignedCbor(self.CborData)
 
+    def DecodeCbor2Dict(self, cborDict):
+        RoleMessage = str([GetKeyByValue(RoleMap, role) for role in self.SearchKey(cborDict, 33)])
+        # ThumbprintHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 34)[0]))
+        payloadFileHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 7)[0]))
+        payloadTypeMessage = str(GetKeyByValue(PayloadTypeMap, self.SearchKey(cborDict, 59)))
+        rimlinkHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 73)[0]))
+        # decode element in role
+        for key in cborDict.keys():
+            if key == 2:
+                for (index,item) in enumerate(cborDict[key]):
+                    cborDict[key][index][33] = eval(RoleMessage)
+            elif key == 6:
+                for (index,item) in enumerate(cborDict[key][16][26][17]):
+                    cborDict[key][16][26][17][index][7][0] = payloadFileHashMessage
+            elif key == 58:
+                cborDict[key][59] = payloadTypeMessage
+                cborDict[key][73][0] = rimlinkHashMessage
+
+        jd = json.dumps(cborDict, indent=2)
+
+        jd_line_list = jd.split('\n')
+        new_line_list = []
+
+        signatureFlag = 0
+
+        for (index,line) in enumerate(jd_line_list):
+            if ':' in line:
+                flag = 0
+                for key in ["cose-sign", "protected", "unprotected", "concise-swid-tag", "signatures"]:
+                    if key in line:
+                        flag = 1
+                if "signature" in line:
+                    signatureFlag = 1
+
+                if flag:
+                    pass
+                else:
+                    KeyValue = eval(eval(line.split(':')[0]))
+                    if KeyValue == 33:
+                        line = line.replace('33', GetKeyByValue(mapDict, KeyValue))
+                    elif KeyValue == 34:
+                        line = line.replace('34', GetKeyByValue(mapDict, KeyValue))
+                    elif KeyValue == 7:
+                        line = line.replace('7', GetKeyByValue(mapDict, KeyValue))
+                    elif KeyValue == 59:
+                        line = line.replace('59', GetKeyByValue(mapDict, KeyValue))
+                    elif KeyValue == 73:
+                        line = line.replace('73', GetKeyByValue(mapDict, KeyValue))
+                    else:
+                        if not signatureFlag:
+                            line = line.replace(str(KeyValue), GetKeyByValue(mapDict, KeyValue))
+                        else:
+                            if KeyValue == 1:
+                                print(line + '   // ' + GetKeyByValue(CoseKeyMap, KeyValue) + ': ' + GetKeyByValue(SignSupportAlgorithmMap, eval(line.split(':')[1])))
+                            else:
+                                print(line + '   // ' + GetKeyByValue(CoseKeyMap, KeyValue))
+            else:
+                pass
+            
+            new_line_list.append(line)
+        
+        # Replace 'path-elements' to 'path_elements' for Rego
+        return json.loads(''.join(new_line_list).replace('path-elements', 'path_elements'))
+       
     def DecodeCbor(self, cborDict):
         jd = json.dumps(cborDict, indent=2)
 
         RoleMessage = str([GetKeyByValue(RoleMap, role) for role in self.SearchKey(cborDict, 33)])
-        ThumbprintHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 34)[0]))
+        # ThumbprintHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 34)[0]))
         payloadFileHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 7)[0]))
         payloadTypeMessage = str(GetKeyByValue(PayloadTypeMap, self.SearchKey(cborDict, 59)))
         rimlinkHashMessage = str(GetKeyByValue(HashAlgorithmMap, self.SearchKey(cborDict, 73)[0]))
@@ -347,8 +411,8 @@ class DecodeCbor():
                     KeyValue = eval(eval(line.split(':')[0]))
                     if KeyValue == 33:
                         print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + RoleMessage)
-                    elif KeyValue == 34:
-                        print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + ThumbprintHashMessage)
+                    # elif KeyValue == 34:
+                    #     print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + ThumbprintHashMessage)
                     elif KeyValue == 7:
                         print(line + '   // ' + GetKeyByValue(mapDict, KeyValue) + ': ' + payloadFileHashMessage)
                     elif KeyValue == 59:
@@ -614,6 +678,55 @@ def VerifyHash(CborFile, TcgEventLog, FlashBinary):
             print('Hash in cbor:\n{}'.format(CborHashDict))
             print('Hash in TCG event log:\n{}'.format(TcgEventLogDict))
 
+def GenOPAInput(CborFile, TcgEventLog, FlashBinary, OutputJson):
+    Mode = 'binary'
+
+    InputDict = {}
+    CborHashDict = {}
+    EvidenceDict = {}
+
+    Decode = DecodeCbor(CborFile)
+    InputDict['reference'] = Decode.DecodeCbor2Dict(Decode.CborData)
+
+    if isinstance(Decode.CborData, dict):
+        for item in Decode.SearchKey(Decode.CborData, mapDict['file']):
+            CborHashDict[item[mapDict["fs-name"]]] = item[mapDict["hash"]][1]
+    else:
+        for item in Decode.SearchKey(cbor.loads(Decode.CborData.value[2]), mapDict['file']):
+            CborHashDict[item[mapDict["fs-name"]]] = item[mapDict["hash"]][1]
+
+    # Check mode is binary or separation
+    if len(CborHashDict) == 6:
+        Mode = 'separation'
+
+    GetHashFromTcgCmd = ['python', FspToolPath, 'hash', '-f', TcgEventLog, '--tcg', '-m', Mode]
+    GetHashFromFspCmd = ['python', FspToolPath, 'hash', '-f', FlashBinary, '-m', Mode]
+
+    if FlashBinary != '':
+        GetHash = subprocess.Popen(GetHashFromFspCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, shell=False)
+        msg = GetHash.communicate()
+        FSPComponents = msg[0].decode().split(eol)
+        for item in FSPComponents:
+            if item != '':
+                EvidenceDict[item.split(' ')[0]] = item.split(' ')[2]
+
+    else:
+        GetHash = subprocess.Popen(GetHashFromTcgCmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, shell=False)
+        msg = GetHash.communicate()
+        FSPComponents = msg[0].decode().split('\r\n')
+        for item in FSPComponents:
+            if item != '':
+                EvidenceDict[item.split(' ')[0]] = item.split(' ')[1]
+
+    InputDict["evidence"] = EvidenceDict
+
+    jsonData = json.dumps(InputDict, indent=2)
+
+    with open(OutputJson, 'w') as f:
+        f.write(jsonData)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title='commands', dest="which")
@@ -653,6 +766,13 @@ if __name__ == "__main__":
     parser_verify_hash.add_argument('--evt', dest='TcgEventLog', type=str, help='Tcg event log path', default='')
     parser_verify_hash.add_argument('--bin', dest='FlashBinary', type=str, help='Flash binary path', default='')
 
+    parser_opa = subparsers.add_parser('opa', help='Generate json format data with evidence as OPA input')
+    parser_opa.set_defaults(which='opa')
+    parser_opa.add_argument('-f', '--file', dest='File', type=str, help='Cbor format file path', required=True)
+    parser_opa.add_argument('--evt', dest='TcgEventLog', type=str, help='Tcg event log path', default='')
+    parser_opa.add_argument('--bin', dest='FlashBinary', type=str, help='Flash binary path', default='')
+    parser_opa.add_argument('-o', '--output', dest='OutputJson', type=str, help='Generated Json file path', required=True)
+
     args = parser.parse_args()
 
     if args.which == 'gencoswid':
@@ -690,6 +810,21 @@ if __name__ == "__main__":
         if args.FlashBinary != '':
             if not os.path.exists(args.FlashBinary):
                 raise Exception("ERROR: Could not locate file '%s' !" % args.FlashBinary)
+    
+    if args.which == 'opa':
+        if not os.path.exists(args.File):
+            raise Exception("ERROR: Could not locate file '%s' !" % args.File)
+        if args.TcgEventLog == '' and args.FlashBinary == '':
+            raise Exception("ERROR: At least one of Tcg event log and flash binary be given!")
+        if args.TcgEventLog != '':
+            if not os.path.exists(args.TcgEventLog):
+                raise Exception("ERROR: Could not locate file '%s' !" % args.TcgEventLog)
+        if args.FlashBinary != '':
+            if not os.path.exists(args.FlashBinary):
+                raise Exception("ERROR: Could not locate file '%s' !" % args.FlashBinary)
+        if os.path.isabs(args.OutputJson):
+            if not os.path.exists(os.path.dirname(args.OutputJson)):
+                os.makedirs(os.path.dirname(args.OutputJson))
 
     if args.which == 'gencoswid':
         Encode = GenCbor(args.OutputFile, ParseAndBuildSwidData(args.IniPath, args.Payload, args.HashType, args.Mode), args.HashType)
@@ -715,3 +850,6 @@ if __name__ == "__main__":
 
     if args.which == 'verify-hash':
         VerifyHash(args.File, args.TcgEventLog, args.FlashBinary)
+
+    if args.which == 'opa':
+        GenOPAInput(args.File, args.TcgEventLog, args.FlashBinary, args.OutputJson)
