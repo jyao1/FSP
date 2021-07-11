@@ -79,6 +79,12 @@ The tools can also verify the SWID/CoSWID tag based upon TCG event log or the FS
 
    Sample signed CoSWID CBOR is at [FspCoSwidTemplate.cbor](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate.cbor) and binary dump at [FspCoSwidTemplate.json](https://github.com/jyao1/FSP/blob/FspAttestation/Tools/ManifestTools/SampleManifests/FspCoSwidTemplate.json)
 
+1.3) CoMID tag
+
+	To create the CoMID tag:
+	
+	'FspGenCoMid.py -c <CoRimConfig Json file> -p <FSP BIN file> -t <HASH algorithm, such as sha256> -o <unsigned CoSWID CBOR file>'
+
 2) Generate RIM in separation mode
 
    Add `-m separation` when create the SWID or CoSWID tag.
