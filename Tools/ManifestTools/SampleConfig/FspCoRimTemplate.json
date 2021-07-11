@@ -1,0 +1,63 @@
+{
+  "corim.id": "d0c996b044a6a4ce43e5541800123f0a",
+  "corim.tags": {
+    "comid.tag-identity": {
+      "comid.tag-id": "3f06af63a93c11e4979700505690773f"
+    },
+    "comid.entity": {
+      "comid.entity-name": "Intel",
+      "comid.reg-id": "http://www.intel.com",
+      "comid.role": [
+        "comid.tag-creator"
+      ]
+    },
+    "comid.triples": {
+      "comid.reference-triples": [
+        {
+          "comid.class": {
+            "comid.class-id": "67b28b6c34cc40a19117ab5b05911e37",
+            "comid.vendor": "Intel",
+            "comid.model": "Intel FSP",
+            "comid.layer": 1
+          }
+        },
+        {
+          "comid.mval": {
+            "comid.ver": {
+              "comid.version": "1.0.0",
+              "comid.version-scheme": "semver"
+            },
+            "comid.flags": "FSPT",
+            "comid.digests": [
+
+            ]
+          }
+        },
+        {
+          "comid.mval": {
+            "comid.ver": {
+              "comid.version": "1.0.0",
+              "comid.version-scheme": "semver"
+            },
+            "comid.flags": "FSPS",
+            "comid.digests": [
+
+            ]
+          }
+        },
+        {
+          "comid.mval": {
+            "comid.ver": {
+              "comid.version": "1.0.0",
+              "comid.version-scheme": "semver"
+            },
+            "comid.flags": "FSPM",
+            "comid.digests": [
+
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
