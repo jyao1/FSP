@@ -2,6 +2,10 @@
 
 ## Feature
 
+All tools were tested at Ubuntu 21.04.
+
+If you want to use SPDM tool on lower linux versions, you may need to download additional dump tools: ShellDmpLogs and Tcg2DumpLog.
+
 parse-eventlog.sh is used to generate event log file by tpm2 tools.
 
 fsp-attestation.sh is used to verify hash in event binary file and BIOS image file.
@@ -12,21 +16,19 @@ Tcg2DumpLog.efi is used to generate SPDM event binary file in UEFI shell.
 
 ## Dependence
 
-All tools were tested at Ubuntu 21.04.
-
 0) Prerequisites
 
 ​	0.1) Follow the ../../ManifestTools/readme.md to install FSP manifest tool.
 
 ​	0.2) Install required Tpm2 tools(version 5.1.1 at least):
 
-  	 `sudo apt-get update -y`
+​	`sudo apt-get update -y`
 
-  	 `sudo apt-get install -y tpm2-tools`
+​	`sudo apt-get install -y tpm2-tools`
 
 ​	0.3) Copy the BIOS measurements binary file to this location:
 
-​	`	cp  /sys/kernel/security/tpm0/binary_bios_measurements <binary_file_name>`
+​	`cp  /sys/kernel/security/tpm0/binary_bios_measurements <binary_file_name>`
 
 ​	`sudo chmod 777 <binary_file_name>`
 
@@ -44,6 +46,18 @@ All tools were tested at Ubuntu 21.04.
 
 ​	`<image_file_name>`
 
+1) Dump tools
+
+​	1.1) ShellDmpLogs  binary file can be downloaded from the following link:
+
+​	https://github.com/HPBirdTW/ShellTpmDmpLog/tree/master/Bin
+
+​	1.2) Tcg2DumpLog source code can be downloaded from the following link:
+
+​	https://github.com/jyao1/EdkiiShellTool
+
+​	Build: Follow standard EDKII build process for EdkiiShellToolPkg.
+
 ## SPDM Log Verification
 
 0) View event log:
@@ -56,9 +70,9 @@ Copy  `ShellDmpLogs.efi`  to U-Disk.
 
 Entry UEFI shell and:
 
-​	`ShellDmpLogs.efi > <log_file_name>`
+`ShellDmpLogs.efi > <log_file_name>`
 
-​	`	edit <log_file_name>`
+`edit <log_file_name>`
 
 1)Verify event binary:
 
